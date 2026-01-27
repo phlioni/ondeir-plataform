@@ -18,7 +18,7 @@ export default function Cashier() {
     const [startAmount, setStartAmount] = useState("");
     const [paymentMethod, setPaymentMethod] = useState("credit");
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
-    const [selectedOrderItems, setSelectedOrderItems] = useState<any[]>([]); // Itens do pedido selecionado
+    const [selectedOrderItems, setSelectedOrderItems] = useState<any[]>([]);
     const [isPaymentOpen, setIsPaymentOpen] = useState(false);
     const [loadingItems, setLoadingItems] = useState(false);
 
@@ -33,7 +33,7 @@ export default function Cashier() {
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
-    }, [shift?.id]); // Recria o listener se o turno mudar, mas idealmente verifica activeShift
+    }, [shift?.id]);
 
     const checkActiveShift = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -55,13 +55,15 @@ export default function Cashier() {
     };
 
     const fetchPendingOrders = async (marketId: string) => {
+        // CORREÇÃO AQUI: Em vez de buscar só 'pending', buscamos tudo que NÃO é 'paid'
+        // Isso garante que pedidos antigos ou com status null apareçam
         const { data } = await supabase
             .from('orders')
             .select('*, restaurant_tables(table_number)')
             .eq('market_id', marketId)
             .neq('status', 'canceled')
-            .eq('payment_status', 'pending')
-            .gt('total_amount', 0)
+            .neq('payment_status', 'paid') // <--- MUDANÇA CRÍTICA
+            .gt('total_amount', 0) // Garante que não mostre pedidos vazios (R$ 0.00)
             .order('created_at', { ascending: false });
 
         setPendingOrders(data || []);
@@ -114,6 +116,7 @@ export default function Cashier() {
         if (!selectedOrder || !shift) return;
 
         try {
+            // 1. Registra Pagamento
             const { error: payError } = await supabase.from('payments').insert({
                 order_id: selectedOrder.id,
                 market_id: shift.market_id,
@@ -123,11 +126,13 @@ export default function Cashier() {
             });
             if (payError) throw payError;
 
+            // 2. Atualiza Status do Pedido
             await supabase.from('orders').update({
                 payment_status: 'paid',
-                status: 'delivered'
+                status: 'delivered' // Finaliza o fluxo operacional também
             }).eq('id', selectedOrder.id);
 
+            // 3. Libera Mesa
             if (selectedOrder.table_id) {
                 await supabase.from('restaurant_tables').update({ is_occupied: false }).eq('id', selectedOrder.table_id);
             }
@@ -143,6 +148,7 @@ export default function Cashier() {
 
     if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin text-primary w-10 h-10" /></div>;
 
+    // --- TELA DE ABERTURA DE CAIXA ---
     if (!shift) {
         return (
             <div className="flex flex-col items-center justify-center h-[70vh] animate-in zoom-in-95 duration-300">
@@ -164,6 +170,7 @@ export default function Cashier() {
         );
     }
 
+    // --- TELA DO CAIXA ABERTO ---
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex justify-between items-start bg-white p-6 rounded-xl border shadow-sm">
@@ -178,6 +185,7 @@ export default function Cashier() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* COLUNA ESQUERDA: PEDIDOS PENDENTES */}
                 <div className="lg:col-span-2 space-y-4">
                     <h2 className="font-bold text-lg flex items-center gap-2">
                         <Wallet className="w-5 h-5 text-primary" /> Aguardando Pagamento ({pendingOrders.length})
@@ -207,6 +215,7 @@ export default function Cashier() {
                     )}
                 </div>
 
+                {/* COLUNA DIREITA: RESUMO */}
                 <div className="space-y-4">
                     <Card className="bg-primary/5 border-primary/20">
                         <CardHeader><CardTitle className="text-primary flex items-center gap-2"><DollarSign className="w-5 h-5" /> Fundo de Caixa</CardTitle></CardHeader>
@@ -215,6 +224,7 @@ export default function Cashier() {
                 </div>
             </div>
 
+            {/* MODAL DE PAGAMENTO */}
             <Dialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
                 <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
                     <DialogHeader>

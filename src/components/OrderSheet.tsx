@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Minus, ShoppingBasket, Send, Search, ArrowLeft, User, ChefHat } from "lucide-react";
+import { Loader2, Plus, Minus, ShoppingBasket, Send, Search, ArrowLeft, User, ChefHat, Trash2 } from "lucide-react";
 
 interface OrderSheetProps {
     table: any;
@@ -50,9 +50,17 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
 
     const fetchActiveOrder = async () => {
         setLoading(true);
-        const { data } = await supabase.from("orders").select("*, order_items(*)").eq("table_id", table.id).neq("status", "delivered").neq("status", "canceled").maybeSingle();
+        // Busca pedido que NÃO foi finalizado (entregue/pago/cancelado)
+        const { data } = await supabase.from("orders")
+            .select("*, order_items(*)")
+            .eq("table_id", table.id)
+            .neq("status", "delivered")
+            .neq("status", "canceled")
+            .neq("payment_status", "paid") // Importante para não pegar pedido velho pago
+            .maybeSingle();
+
         setActiveOrder(data);
-        if (data?.customer_name) setWaiterName(data.customer_name); // Recupera nome do garçom se já existir
+        if (data?.customer_name) setWaiterName(data.customer_name);
         setLoading(false);
     };
 
@@ -69,7 +77,7 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
             ...selectedItem,
             quantity: itemQty,
             notes: itemNote,
-            cartId: Math.random().toString(36) // ID único para o carrinho permitir itens iguais com obs diferentes
+            cartId: Math.random().toString(36)
         }]);
         setIsAddModalOpen(false);
         toast({ title: "Item adicionado!", duration: 1500 });
@@ -98,16 +106,16 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
                     market_id: table.market_id,
                     table_id: table.id,
                     status: 'pending',
+                    payment_status: 'pending', // Essencial para aparecer no caixa
                     order_type: 'table',
-                    total_amount: 0,
-                    customer_name: waiterName // Usamos customer_name para guardar o garçom em pedidos de mesa
+                    total_amount: 0, // Será atualizado
+                    customer_name: waiterName
                 }).select().single();
 
                 if (orderError) throw orderError;
                 orderId = newOrder.id;
                 await supabase.from("restaurant_tables").update({ is_occupied: true }).eq("id", table.id);
             } else if (!activeOrder.customer_name && waiterName) {
-                // Atualiza nome do garçom se não tiver
                 await supabase.from("orders").update({ customer_name: waiterName }).eq("id", orderId);
             }
 
@@ -125,11 +133,11 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
             const { error: itemsError } = await supabase.from("order_items").insert(itemsToInsert);
             if (itemsError) throw itemsError;
 
-            // Atualiza total do pedido
-            const currentTotal = Number(activeOrder?.total_amount || 0);
+            // Atualiza total (soma antigo + novo)
+            const oldTotal = Number(activeOrder?.total_amount || 0);
             await supabase.from("orders").update({
-                total_amount: currentTotal + cartTotal,
-                status: 'pending' // Volta para pending para alertar a cozinha de novos itens
+                total_amount: oldTotal + cartTotal,
+                status: 'pending'
             }).eq("id", orderId);
 
             toast({ title: "Pedido Enviado!", className: "bg-green-600 text-white" });
@@ -142,7 +150,6 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
         }
     };
 
-    // Filtra itens
     const filteredMenu = menuItems.filter(item =>
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.category?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -158,14 +165,13 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
     return (
         <Sheet open={isOpen} onOpenChange={onClose}>
             <SheetContent side="right" className="w-full sm:max-w-md flex flex-col h-full p-0 bg-gray-50 border-l-0">
-                {/* Header Fixo */}
                 <SheetHeader className="p-4 bg-white border-b sticky top-0 z-10 flex flex-row items-center justify-between space-y-0 text-left">
                     <div className="flex items-center gap-2">
                         <Button variant="ghost" size="icon" onClick={onClose} className="-ml-2">
                             <ArrowLeft className="w-5 h-5" />
                         </Button>
                         <div>
-                            <SheetTitle>{table?.table_number}</SheetTitle>
+                            <SheetTitle>Mesa {table?.table_number}</SheetTitle>
                             <SheetDescription className="text-xs">{activeOrder ? "Mesa Aberta" : "Nova Comanda"}</SheetDescription>
                         </div>
                     </div>
@@ -185,7 +191,7 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
                     </div>
 
                     <TabsContent value="menu" className="flex-1 overflow-hidden flex flex-col m-0 relative">
-                        <ScrollArea className="flex-1 p-4 pb-20">
+                        <ScrollArea className="flex-1 p-4 pb-24">
                             {Object.entries(groupedMenu).map(([category, items]) => (
                                 <div key={category} className="mb-6">
                                     <h3 className="font-bold text-gray-900 mb-3 uppercase text-xs tracking-wider flex items-center gap-2">

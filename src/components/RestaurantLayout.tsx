@@ -1,5 +1,6 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, ShoppingBag, UtensilsCrossed, Settings, LogOut, Store, Armchair, ChefHat, DollarSign } from "lucide-react";
+// Adicione Package nas importações do lucide-react
+import { LayoutDashboard, ShoppingBag, UtensilsCrossed, Settings, Activity, LogOut, Store, Armchair, ChefHat, DollarSign, Package, Bike } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -8,14 +9,19 @@ export default function Layout() {
     const location = useLocation();
 
     const menuItems = [
-        { label: "Visão Geral", icon: LayoutDashboard, path: "/" },
-        { label: "Caixa (PDV)", icon: DollarSign, path: "/cashier" }, // NOVO
+        { label: "Operação", icon: Activity, path: "/" },
+        { label: "Visão Geral", icon: LayoutDashboard, path: "/dashboard" },
+        { label: "Caixa (PDV)", icon: DollarSign, path: "/cashier" },
         { label: "Pedidos", icon: ShoppingBag, path: "/orders" },
+        { label: "Entregadores", icon: Bike, path: "/couriers" },
         { label: "Cozinha (KDS)", icon: ChefHat, path: "/kds" },
         { label: "Mesas", icon: Armchair, path: "/tables" },
+        { label: "Estoque", icon: Package, path: "/inventory" }, // <--- NOVO
         { label: "Cardápio", icon: UtensilsCrossed, path: "/menu" },
         { label: "Configurações", icon: Settings, path: "/settings" },
     ];
+    // ... resto do código igual ...
+    // (Apenas substitua a constante menuItems e mantenha o resto do return)
 
     const handleLogout = async () => {
         await supabase.auth.signOut();

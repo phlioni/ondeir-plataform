@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
-import { Loader2, Save, Upload, MapPin, Image as ImageIcon } from "lucide-react";
+import { Loader2, Save, Upload, MapPin, Image as ImageIcon, Copy, ExternalLink, QrCode } from "lucide-react";
 
 const mapContainerStyle = { width: '100%', height: '350px', borderRadius: '0.75rem' };
 const defaultCenter = { lat: -23.550520, lng: -46.633308 };
@@ -63,6 +63,9 @@ export default function Settings() {
         name: "", category: "", description: "", address: "", amenities: "", cover_image: "", latitude: 0, longitude: 0
     });
 
+    // URL do Menu Digital
+    const menuLink = market ? `${window.location.origin}/menu/${market.id}` : "";
+
     useEffect(() => {
         const init = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -111,15 +114,41 @@ export default function Settings() {
         }
     };
 
+    const copyToClipboard = () => {
+        if (!menuLink) return;
+        navigator.clipboard.writeText(menuLink);
+        toast({ title: "Link copiado!", className: "bg-green-600 text-white" });
+    };
+
     if (loading) return <Loader2 className="animate-spin" />;
 
     return (
         <div className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-500">
             <div className="flex justify-between items-center"><h1 className="text-2xl font-bold">Configurações</h1><Button onClick={handleSave}><Save className="mr-2 w-4 h-4" /> Salvar</Button></div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <Card className="lg:col-span-2 border-0 shadow-md">
                     <CardHeader className="bg-gray-50/80 border-b pb-4"><CardTitle>Dados Gerais</CardTitle></CardHeader>
                     <CardContent className="space-y-5 pt-6">
+                        {/* CAMPO NOVO: MENU DIGITAL */}
+                        {market && (
+                            <div className="space-y-2 bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                <label className="text-sm font-bold text-blue-900 flex items-center gap-2">
+                                    <QrCode className="w-4 h-4" /> Menu Digital (Link Público)
+                                </label>
+                                <div className="flex gap-2">
+                                    <Input value={menuLink} readOnly className="bg-white text-gray-600 font-mono text-sm border-blue-200" />
+                                    <Button variant="outline" className="shrink-0 border-blue-200 hover:bg-blue-100 text-blue-700" onClick={copyToClipboard} title="Copiar Link">
+                                        <Copy className="w-4 h-4" />
+                                    </Button>
+                                    <Button variant="outline" className="shrink-0 border-blue-200 hover:bg-blue-100 text-blue-700" onClick={() => window.open(menuLink, '_blank')} title="Abrir">
+                                        <ExternalLink className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-blue-600">Envie este link para seus clientes ou gere um QR Code.</p>
+                            </div>
+                        )}
+
                         <div className="grid md:grid-cols-2 gap-5">
                             <div className="space-y-2"><label className="text-sm font-medium">Nome</label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
                             <div className="space-y-2"><label className="text-sm font-medium">Categoria</label><Select value={form.category} onValueChange={v => setForm({ ...form, category: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bar">Bar</SelectItem><SelectItem value="Restaurante">Restaurante</SelectItem></SelectContent></Select></div>

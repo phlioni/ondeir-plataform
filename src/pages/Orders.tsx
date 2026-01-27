@@ -3,8 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Clock, CheckCircle2, ChefHat, Bike, Receipt } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Clock, CheckCircle2, ChefHat, Bike, Receipt, Send, Plus, Phone, MapPin, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import OrderSheet from "@/components/OrderSheet"; // Importamos o sheet
 
 type Order = {
     id: string;
@@ -14,6 +18,8 @@ type Order = {
     customer_name?: string;
     total_amount: number;
     created_at: string;
+    courier_id?: string;
+    couriers?: { name: string };
     restaurant_tables?: { table_number: string };
     order_items?: { name: string; quantity: number; notes?: string }[];
 };
@@ -21,41 +27,105 @@ type Order = {
 export default function Orders() {
     const { toast } = useToast();
     const [orders, setOrders] = useState<Order[]>([]);
+    const [couriers, setCouriers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [marketId, setMarketId] = useState<string | null>(null);
+
+    // Despacho
+    const [isDispatchOpen, setIsDispatchOpen] = useState(false);
+    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [selectedCourierId, setSelectedCourierId] = useState<string>("");
+
+    // Novo Delivery
+    const [isNewDeliveryOpen, setIsNewDeliveryOpen] = useState(false);
+    const [newDelivery, setNewDelivery] = useState({ name: "", phone: "", address: "" });
+
+    // OrderSheet (Adicionar Itens)
+    const [isSheetOpen, setIsSheetOpen] = useState(false);
+    const [sheetOrderId, setSheetOrderId] = useState<string | undefined>(undefined);
 
     useEffect(() => {
-        fetchOrders();
+        fetchData();
         const channel = supabase.channel('orders_realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchOrders())
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchData())
             .subscribe();
         return () => { supabase.removeChannel(channel); };
     }, []);
 
-    const fetchOrders = async () => {
+    const fetchData = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
         const { data: market } = await supabase.from('markets').select('id').eq('owner_id', user.id).single();
         if (!market) return;
 
-        const { data } = await supabase.from('orders')
-            .select(`*, restaurant_tables(table_number), order_items(name, quantity, notes)`)
+        setMarketId(market.id);
+
+        // Pedidos
+        const { data: ords } = await supabase.from('orders')
+            .select(`*, restaurant_tables(table_number), order_items(name, quantity, notes), couriers(name)`)
             .eq('market_id', market.id)
             .neq('status', 'delivered')
             .neq('status', 'canceled')
             .order('created_at', { ascending: true });
+        setOrders(ords || []);
 
-        setOrders(data || []);
+        // Entregadores
+        const { data: cours } = await supabase.from('couriers').select('*').eq('market_id', market.id).eq('is_active', true);
+        setCouriers(cours || []);
+
         setLoading(false);
     };
 
     const updateStatus = async (id: string, newStatus: string) => {
         const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', id);
-        if (error) toast({ title: "Erro ao atualizar", variant: "destructive" });
-        else { toast({ title: "Status atualizado!" }); fetchOrders(); }
+        if (error) toast({ title: "Erro", variant: "destructive" });
+        else { toast({ title: "Atualizado!" }); fetchData(); }
+    };
+
+    const handleCreateDelivery = async () => {
+        if (!marketId || !newDelivery.name) return;
+        try {
+            const { data, error } = await supabase.from('orders').insert({
+                market_id: marketId,
+                order_type: 'delivery',
+                status: 'pending',
+                customer_name: newDelivery.name,
+                customer_phone: newDelivery.phone,
+                delivery_address: newDelivery.address,
+                total_amount: 0
+            }).select().single();
+
+            if (error) throw error;
+
+            toast({ title: "Pedido criado!", description: "Agora adicione os itens." });
+            setIsNewDeliveryOpen(false);
+            setNewDelivery({ name: "", phone: "", address: "" });
+
+            // Abre o Sheet para adicionar itens
+            setSheetOrderId(data.id);
+            setIsSheetOpen(true);
+
+        } catch (e: any) {
+            toast({ title: "Erro", description: e.message, variant: "destructive" });
+        }
+    };
+
+    const handleDispatch = async () => {
+        if (!selectedOrder || !selectedCourierId) return;
+        await supabase.from('orders').update({ courier_id: selectedCourierId }).eq('id', selectedOrder.id);
+        await supabase.from('couriers').update({ is_busy: true }).eq('id', selectedCourierId);
+        toast({ title: "Despachado!" });
+        setIsDispatchOpen(false);
+        fetchData();
+    };
+
+    const openOrderSheet = (orderId: string) => {
+        setSheetOrderId(orderId);
+        setIsSheetOpen(true);
     };
 
     const OrderCard = ({ order }: { order: Order }) => (
-        <Card className="mb-3 border-l-4 border-l-primary shadow-sm hover:shadow-md transition-all">
+        <Card className="mb-3 border-l-4 border-l-primary shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => openOrderSheet(order.id)}>
             <CardContent className="p-4">
                 <div className="flex justify-between items-start mb-2">
                     <div className="flex flex-col">
@@ -72,13 +142,20 @@ export default function Orders() {
                     {order.order_items?.map((item, idx) => (
                         <p key={idx} className="text-sm text-gray-600"><span className="font-bold">{item.quantity}x</span> {item.name}</p>
                     ))}
+                    {order.courier_id && <p className="text-xs text-blue-600 font-bold flex items-center gap-1 mt-2 bg-blue-50 p-1 rounded w-fit"><Bike className="w-3 h-3" /> {order.couriers?.name}</p>}
                 </div>
-                <div className="flex justify-between items-center pt-2 border-t mt-2">
+                <div className="flex justify-between items-center pt-2 border-t mt-2" onClick={e => e.stopPropagation()}>
                     <span className="font-bold text-sm">R$ {order.total_amount}</span>
                     <div className="flex gap-2">
                         {order.status === 'pending' && <Button size="sm" onClick={() => updateStatus(order.id, 'preparing')} className="bg-blue-600 h-8"><ChefHat className="w-4 h-4 mr-1" /> Preparar</Button>}
                         {(order.status === 'preparing' || order.status === 'confirmed') && <Button size="sm" onClick={() => updateStatus(order.id, 'ready')} className="bg-green-600 h-8"><CheckCircle2 className="w-4 h-4 mr-1" /> Pronto</Button>}
-                        {order.status === 'ready' && <Button size="sm" onClick={() => updateStatus(order.id, 'delivered')} variant="outline" className="h-8">Concluir</Button>}
+                        {order.status === 'ready' && (
+                            order.order_type === 'delivery' && !order.courier_id ? (
+                                <Button size="sm" onClick={() => { setSelectedOrder(order); setIsDispatchOpen(true); }} className="bg-orange-500 hover:bg-orange-600 h-8"><Send className="w-4 h-4 mr-1" /> Despachar</Button>
+                            ) : (
+                                <Button size="sm" onClick={() => updateStatus(order.id, 'delivered')} variant="outline" className="h-8">Concluir</Button>
+                            )
+                        )}
                     </div>
                 </div>
             </CardContent>
@@ -91,8 +168,22 @@ export default function Orders() {
         <div className="space-y-6 h-[calc(100vh-140px)] flex flex-col animate-in fade-in duration-500">
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-bold text-gray-900">Gestão de Pedidos</h1>
-                <Button variant="outline" onClick={fetchOrders}><Clock className="w-4 h-4 mr-2" /> Atualizar</Button>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={fetchData}><Clock className="w-4 h-4 mr-2" /> Atualizar</Button>
+                    <Dialog open={isNewDeliveryOpen} onOpenChange={setIsNewDeliveryOpen}>
+                        <DialogContent>
+                            <DialogHeader><DialogTitle>Novo Pedido Delivery</DialogTitle></DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div className="space-y-2"><label className="text-sm font-medium flex gap-2"><User className="w-4 h-4" /> Nome do Cliente</label><Input value={newDelivery.name} onChange={e => setNewDelivery({ ...newDelivery, name: e.target.value })} placeholder="Ex: Maria Souza" /></div>
+                                <div className="space-y-2"><label className="text-sm font-medium flex gap-2"><Phone className="w-4 h-4" /> Telefone</label><Input value={newDelivery.phone} onChange={e => setNewDelivery({ ...newDelivery, phone: e.target.value })} placeholder="(11) 99999-9999" /></div>
+                                <div className="space-y-2"><label className="text-sm font-medium flex gap-2"><MapPin className="w-4 h-4" /> Endereço</label><Input value={newDelivery.address} onChange={e => setNewDelivery({ ...newDelivery, address: e.target.value })} placeholder="Rua, Número, Bairro" /></div>
+                                <Button className="w-full" onClick={handleCreateDelivery}>Criar e Adicionar Itens</Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+                </div>
             </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full overflow-hidden">
                 <div className="flex flex-col bg-gray-100/50 p-4 rounded-xl border border-gray-200/60 h-full">
                     <div className="flex items-center gap-2 mb-4"><div className="w-3 h-3 rounded-full bg-yellow-500" /><h2 className="font-semibold text-gray-700">Novos</h2><Badge className="ml-auto bg-white text-gray-700">{orders.filter(o => o.status === 'pending').length}</Badge></div>
@@ -103,10 +194,35 @@ export default function Orders() {
                     <div className="overflow-y-auto flex-1 pr-2 space-y-2">{orders.filter(o => o.status === 'preparing' || o.status === 'confirmed').map(order => <OrderCard key={order.id} order={order} />)}</div>
                 </div>
                 <div className="flex flex-col bg-green-50/50 p-4 rounded-xl border border-green-100 h-full">
-                    <div className="flex items-center gap-2 mb-4"><div className="w-3 h-3 rounded-full bg-green-500" /><h2 className="font-semibold text-green-900">Pronto</h2><Badge className="ml-auto bg-white text-green-700">{orders.filter(o => o.status === 'ready').length}</Badge></div>
+                    <div className="flex items-center gap-2 mb-4"><div className="w-3 h-3 rounded-full bg-green-500" /><h2 className="font-semibold text-green-900">Pronto / Despacho</h2><Badge className="ml-auto bg-white text-green-700">{orders.filter(o => o.status === 'ready').length}</Badge></div>
                     <div className="overflow-y-auto flex-1 pr-2 space-y-2">{orders.filter(o => o.status === 'ready').map(order => <OrderCard key={order.id} order={order} />)}</div>
                 </div>
             </div>
+
+            {/* Modal de Despacho */}
+            <Dialog open={isDispatchOpen} onOpenChange={setIsDispatchOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Despachar Pedido</DialogTitle></DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <p className="text-sm text-gray-500">Selecione o entregador:</p>
+                        <Select onValueChange={setSelectedCourierId}>
+                            <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <SelectContent>
+                                {couriers.map(c => <SelectItem key={c.id} value={c.id}>{c.name} {c.is_busy ? '(Ocupado)' : ''}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                        <Button className="w-full" onClick={handleDispatch} disabled={!selectedCourierId}>Confirmar</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Sheet para adicionar itens (Reutilizando componente) */}
+            <OrderSheet
+                isOpen={isSheetOpen}
+                onClose={() => setIsSheetOpen(false)}
+                onOrderSent={fetchData}
+                orderId={sheetOrderId} // Passa o ID do delivery criado
+            />
         </div>
     );
 }

@@ -17,6 +17,10 @@ import Orders from "./pages/Orders";
 import Tables from "./pages/Tables";
 import KDS from "./pages/KDS";
 import Cashier from "./pages/Cashier";
+import Inventory from "./pages/Inventory";
+import Couriers from "./pages/Couriers";
+import PublicMenu from "./pages/public/PublicMenu";
+import Operations from "./pages/Operations";
 
 const queryClient = new QueryClient();
 
@@ -31,15 +35,20 @@ const App = () => (
           <Route path="/access-control" element={<AccessControl />} />
           <Route path="/place/:id" element={<VenueDetail />} />
 
+          <Route path="/menu/:id" element={<PublicMenu />} />
+
           {/* ESTRUTURA DO PAINEL ADMINISTRATIVO */}
           <Route path="/" element={<RestaurantLayout />}>
-            <Route index element={<Dashboard />} />
+            <Route index element={<Operations />} />
+            <Route path="dashboard" element={<Dashboard />} />
             <Route path="orders" element={<Orders />} />
             <Route path="kds" element={<KDS />} />
             <Route path="tables" element={<Tables />} />
             <Route path="menu" element={<Menu />} />
             <Route path="settings" element={<Settings />} />
             <Route path="cashier" element={<Cashier />} />
+            <Route path="couriers" element={<Couriers />} />
+            <Route path="inventory" element={<Inventory />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

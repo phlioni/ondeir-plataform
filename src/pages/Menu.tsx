@@ -6,15 +6,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Trash, Image as ImageIcon } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Loader2, Plus, Trash, Image as ImageIcon, ScrollText, X } from "lucide-react";
 
 export default function Menu() {
     const { toast } = useToast();
     const [menuItems, setMenuItems] = useState<any[]>([]);
+    const [ingredients, setIngredients] = useState<any[]>([]); // Lista de ingredientes disponíveis
     const [marketId, setMarketId] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    // Novo Produto
     const [newItem, setNewItem] = useState({ name: "", price: "", description: "", category: "Comida", image_url: "" });
     const [uploading, setUploading] = useState(false);
-    const [loading, setLoading] = useState(true);
+
+    // Ficha Técnica (Receita)
+    const [selectedProduct, setSelectedProduct] = useState<any>(null);
+    const [recipe, setRecipe] = useState<any[]>([]);
+    const [isRecipeOpen, setIsRecipeOpen] = useState(false);
+    const [newRecipeItem, setNewRecipeItem] = useState({ ingredient_id: "", quantity: "" });
 
     useEffect(() => {
         const init = async () => {
@@ -24,6 +34,7 @@ export default function Menu() {
             if (m) {
                 setMarketId(m.id);
                 fetchMenu(m.id);
+                fetchIngredients(m.id);
             }
             setLoading(false);
         };
@@ -35,6 +46,12 @@ export default function Menu() {
         setMenuItems(data || []);
     };
 
+    const fetchIngredients = async (id: string) => {
+        const { data } = await supabase.from("ingredients").select("*").eq("market_id", id).order("name");
+        setIngredients(data || []);
+    };
+
+    // --- LÓGICA DE UPLOAD E ADIÇÃO DE PRODUTO (MANTIDA) ---
     const handleUpload = async (file: File) => {
         setUploading(true);
         try {
@@ -42,22 +59,13 @@ export default function Menu() {
             await supabase.storage.from('images').upload(fileName, file);
             const { data } = supabase.storage.from('images').getPublicUrl(fileName);
             setNewItem(prev => ({ ...prev, image_url: data.publicUrl }));
-        } catch (e) {
-            toast({ title: "Erro no upload", variant: "destructive" });
-        } finally {
-            setUploading(false);
-        }
+        } catch (e) { toast({ title: "Erro upload", variant: "destructive" }); } finally { setUploading(false); }
     };
 
     const handleAdd = async () => {
         if (!marketId || !newItem.name) return;
         const { error } = await supabase.from("menu_items").insert({
-            market_id: marketId,
-            name: newItem.name,
-            description: newItem.description,
-            price: parseFloat(newItem.price),
-            category: newItem.category,
-            image_url: newItem.image_url
+            market_id: marketId, name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), category: newItem.category, image_url: newItem.image_url
         });
         if (!error) {
             setNewItem({ name: "", price: "", description: "", category: "Comida", image_url: "" });
@@ -71,13 +79,47 @@ export default function Menu() {
         if (marketId) fetchMenu(marketId);
     };
 
+    // --- NOVA LÓGICA: FICHA TÉCNICA ---
+    const openRecipe = async (product: any) => {
+        setSelectedProduct(product);
+        const { data } = await supabase
+            .from("product_recipes")
+            .select("*, ingredients(name, unit)")
+            .eq("menu_item_id", product.id);
+        setRecipe(data || []);
+        setIsRecipeOpen(true);
+    };
+
+    const addIngredientToRecipe = async () => {
+        if (!selectedProduct || !newRecipeItem.ingredient_id || !newRecipeItem.quantity) return;
+
+        const { error } = await supabase.from("product_recipes").insert({
+            menu_item_id: selectedProduct.id,
+            ingredient_id: newRecipeItem.ingredient_id,
+            quantity_needed: parseFloat(newRecipeItem.quantity)
+        });
+
+        if (error) {
+            toast({ title: "Erro ao adicionar", description: "Talvez já exista na receita?", variant: "destructive" });
+        } else {
+            openRecipe(selectedProduct); // Recarrega
+            setNewRecipeItem({ ingredient_id: "", quantity: "" });
+        }
+    };
+
+    const removeIngredientFromRecipe = async (id: string) => {
+        await supabase.from("product_recipes").delete().eq("id", id);
+        if (selectedProduct) openRecipe(selectedProduct);
+    };
+
     if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-primary" /></div>;
-    if (!marketId) return <div className="text-center p-10">Primeiro configure seu estabelecimento nas Configurações.</div>;
 
     return (
         <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500">
             <h1 className="text-2xl font-bold text-gray-900">Gestão de Cardápio</h1>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* FORMULÁRIO PRODUTO */}
                 <Card className="h-fit border-0 shadow-md">
                     <CardHeader className="bg-gray-50/80 border-b pb-4"><CardTitle className="text-base">Novo Item</CardTitle></CardHeader>
                     <CardContent className="space-y-4 pt-6">
@@ -85,32 +127,83 @@ export default function Menu() {
                             {newItem.image_url ? <div className="w-24 h-24 bg-cover bg-center rounded-lg" style={{ backgroundImage: `url(${newItem.image_url})` }} /> : <div className="text-center text-gray-400"><ImageIcon className="mx-auto mb-2 w-8 h-8" /><span className="text-xs">Foto</span></div>}
                             <input type="file" id="prod-up" className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0])} />
                         </div>
-                        {uploading && <p className="text-xs text-center text-primary animate-pulse">Enviando...</p>}
                         <Input placeholder="Nome" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} />
                         <div className="flex gap-2">
                             <Input placeholder="Preço" type="number" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} />
-                            <Select value={newItem.category} onValueChange={v => setNewItem({ ...newItem, category: v })}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent><SelectItem value="Comida">Comida</SelectItem><SelectItem value="Bebida">Bebida</SelectItem></SelectContent>
-                            </Select>
+                            <Select value={newItem.category} onValueChange={v => setNewItem({ ...newItem, category: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Comida">Comida</SelectItem><SelectItem value="Bebida">Bebida</SelectItem></SelectContent></Select>
                         </div>
                         <Textarea placeholder="Descrição" value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} />
                         <Button className="w-full" onClick={handleAdd} disabled={uploading || !newItem.name}><Plus className="mr-2 h-4 w-4" /> Adicionar</Button>
                     </CardContent>
                 </Card>
+
+                {/* LISTA DE PRODUTOS */}
                 <div className="lg:col-span-2 space-y-3">
                     {menuItems.map(item => (
                         <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm flex gap-4 items-center">
                             <div className="w-16 h-16 bg-gray-100 rounded-lg bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${item.image_url || '/placeholder.svg'})` }} />
                             <div className="flex-1 min-w-0">
                                 <div className="flex justify-between"><h4 className="font-bold">{item.name}</h4><span className="text-primary font-bold">R$ {item.price.toFixed(2)}</span></div>
-                                <p className="text-xs text-gray-500 truncate">{item.description}</p>
+                                <div className="flex gap-2 mt-1">
+                                    <p className="text-xs text-gray-500 truncate flex-1">{item.description}</p>
+                                    <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={() => openRecipe(item)}>
+                                        <ScrollText className="w-3 h-3" /> Ficha Técnica
+                                    </Button>
+                                </div>
                             </div>
                             <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}><Trash className="w-4 h-4 text-gray-400 hover:text-red-600" /></Button>
                         </div>
                     ))}
                 </div>
             </div>
+
+            {/* MODAL FICHA TÉCNICA */}
+            <Dialog open={isRecipeOpen} onOpenChange={setIsRecipeOpen}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Ficha Técnica: {selectedProduct?.name}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm text-blue-700">
+                            Defina quais ingredientes são consumidos ao vender este produto. O estoque será atualizado automaticamente.
+                        </div>
+
+                        <div className="flex gap-2 items-end">
+                            <div className="flex-1 space-y-1">
+                                <label className="text-xs font-medium">Ingrediente</label>
+                                <Select value={newRecipeItem.ingredient_id} onValueChange={v => setNewRecipeItem({ ...newRecipeItem, ingredient_id: v })}>
+                                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {ingredients.map(ing => (
+                                            <SelectItem key={ing.id} value={ing.id}>{ing.name} ({ing.unit})</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="w-24 space-y-1">
+                                <label className="text-xs font-medium">Qtd</label>
+                                <Input type="number" placeholder="0.00" value={newRecipeItem.quantity} onChange={e => setNewRecipeItem({ ...newRecipeItem, quantity: e.target.value })} />
+                            </div>
+                            <Button onClick={addIngredientToRecipe} disabled={!newRecipeItem.ingredient_id}><Plus className="w-4 h-4" /></Button>
+                        </div>
+
+                        <div className="border rounded-lg overflow-hidden mt-4">
+                            <div className="bg-gray-50 p-2 text-xs font-bold text-gray-500 flex justify-between px-4"><span>Ingrediente</span><span>Qtd na Receita</span></div>
+                            {recipe.length === 0 ? <div className="p-4 text-center text-sm text-gray-400">Nenhum ingrediente vinculado.</div> :
+                                recipe.map(r => (
+                                    <div key={r.id} className="p-3 border-b last:border-0 flex justify-between items-center text-sm">
+                                        <span>{r.ingredients?.name}</span>
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-medium">{r.quantity_needed} {r.ingredients?.unit}</span>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-400 hover:text-red-600" onClick={() => removeIngredientFromRecipe(r.id)}><X className="w-3 h-3" /></Button>
+                                        </div>
+                                    </div>
+                                ))
+                            }
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
