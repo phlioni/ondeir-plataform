@@ -21,6 +21,7 @@ import Inventory from "./pages/Inventory";
 import Couriers from "./pages/Couriers";
 import PublicMenu from "./pages/public/PublicMenu";
 import Operations from "./pages/Operations";
+import CourierApp from "./pages/public/CourierApp";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
           <Route path="/place/:id" element={<VenueDetail />} />
 
           <Route path="/menu/:id" element={<PublicMenu />} />
+          <Route path="/driver/:id" element={<CourierApp />} />
 
           {/* ESTRUTURA DO PAINEL ADMINISTRATIVO */}
           <Route path="/" element={<RestaurantLayout />}>

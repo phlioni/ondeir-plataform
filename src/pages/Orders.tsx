@@ -4,11 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Clock, CheckCircle2, ChefHat, Bike, Receipt, Send, Plus, Phone, MapPin, User } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2, Clock, CheckCircle2, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import OrderSheet from "@/components/OrderSheet"; // Importamos o sheet
+import OrderSheet from "@/components/OrderSheet";
+import { DispatchModal } from "@/components/DispatchModal"; // <--- NOVO COMPONENTE
 
 type Order = {
     id: string;
@@ -19,6 +19,7 @@ type Order = {
     total_amount: number;
     created_at: string;
     courier_id?: string;
+    market_id: string; // Importante para o DispatchModal
     couriers?: { name: string };
     restaurant_tables?: { table_number: string };
     order_items?: { name: string; quantity: number; notes?: string }[];
@@ -27,16 +28,13 @@ type Order = {
 export default function Orders() {
     const { toast } = useToast();
     const [orders, setOrders] = useState<Order[]>([]);
-    const [couriers, setCouriers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [marketId, setMarketId] = useState<string | null>(null);
 
-    // Despacho
-    const [isDispatchOpen, setIsDispatchOpen] = useState(false);
-    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-    const [selectedCourierId, setSelectedCourierId] = useState<string>("");
+    // Controle do Dispatch (Agora usa o objeto do pedido diretamente)
+    const [dispatchOrder, setDispatchOrder] = useState<Order | null>(null);
 
-    // Novo Delivery
+    // Novo Delivery Manual
     const [isNewDeliveryOpen, setIsNewDeliveryOpen] = useState(false);
     const [newDelivery, setNewDelivery] = useState({ name: "", phone: "", address: "" });
 
@@ -60,7 +58,6 @@ export default function Orders() {
 
         setMarketId(market.id);
 
-        // Pedidos
         const { data: ords } = await supabase.from('orders')
             .select(`*, restaurant_tables(table_number), order_items(name, quantity, notes), couriers(name)`)
             .eq('market_id', market.id)
@@ -68,11 +65,6 @@ export default function Orders() {
             .neq('status', 'canceled')
             .order('created_at', { ascending: true });
         setOrders(ords || []);
-
-        // Entregadores
-        const { data: cours } = await supabase.from('couriers').select('*').eq('market_id', market.id).eq('is_active', true);
-        setCouriers(cours || []);
-
         setLoading(false);
     };
 
@@ -101,22 +93,12 @@ export default function Orders() {
             setIsNewDeliveryOpen(false);
             setNewDelivery({ name: "", phone: "", address: "" });
 
-            // Abre o Sheet para adicionar itens
             setSheetOrderId(data.id);
             setIsSheetOpen(true);
 
         } catch (e: any) {
             toast({ title: "Erro", description: e.message, variant: "destructive" });
         }
-    };
-
-    const handleDispatch = async () => {
-        if (!selectedOrder || !selectedCourierId) return;
-        await supabase.from('orders').update({ courier_id: selectedCourierId }).eq('id', selectedOrder.id);
-        await supabase.from('couriers').update({ is_busy: true }).eq('id', selectedCourierId);
-        toast({ title: "Despachado!" });
-        setIsDispatchOpen(false);
-        fetchData();
     };
 
     const openOrderSheet = (orderId: string) => {
@@ -149,9 +131,17 @@ export default function Orders() {
                     <div className="flex gap-2">
                         {order.status === 'pending' && <Button size="sm" onClick={() => updateStatus(order.id, 'preparing')} className="bg-blue-600 h-8"><ChefHat className="w-4 h-4 mr-1" /> Preparar</Button>}
                         {(order.status === 'preparing' || order.status === 'confirmed') && <Button size="sm" onClick={() => updateStatus(order.id, 'ready')} className="bg-green-600 h-8"><CheckCircle2 className="w-4 h-4 mr-1" /> Pronto</Button>}
+
+                        {/* Lógica do Botão de Despacho */}
                         {order.status === 'ready' && (
                             order.order_type === 'delivery' && !order.courier_id ? (
-                                <Button size="sm" onClick={() => { setSelectedOrder(order); setIsDispatchOpen(true); }} className="bg-orange-500 hover:bg-orange-600 h-8"><Send className="w-4 h-4 mr-1" /> Despachar</Button>
+                                <Button
+                                    size="sm"
+                                    onClick={() => setDispatchOrder(order)} // <--- Abre o novo Modal
+                                    className="bg-orange-500 hover:bg-orange-600 h-8"
+                                >
+                                    <Send className="w-4 h-4 mr-1" /> Despachar
+                                </Button>
                             ) : (
                                 <Button size="sm" onClick={() => updateStatus(order.id, 'delivered')} variant="outline" className="h-8">Concluir</Button>
                             )
@@ -171,6 +161,9 @@ export default function Orders() {
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={fetchData}><Clock className="w-4 h-4 mr-2" /> Atualizar</Button>
                     <Dialog open={isNewDeliveryOpen} onOpenChange={setIsNewDeliveryOpen}>
+                        {/* Botão Novo Pedido (Trigger removido para usar controle de estado, ou adicione Trigger aqui se preferir) */}
+                        <Button onClick={() => setIsNewDeliveryOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo Pedido</Button>
+
                         <DialogContent>
                             <DialogHeader><DialogTitle>Novo Pedido Delivery</DialogTitle></DialogHeader>
                             <div className="space-y-4 py-4">
@@ -199,29 +192,25 @@ export default function Orders() {
                 </div>
             </div>
 
-            {/* Modal de Despacho */}
-            <Dialog open={isDispatchOpen} onOpenChange={setIsDispatchOpen}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>Despachar Pedido</DialogTitle></DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <p className="text-sm text-gray-500">Selecione o entregador:</p>
-                        <Select onValueChange={setSelectedCourierId}>
-                            <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                            <SelectContent>
-                                {couriers.map(c => <SelectItem key={c.id} value={c.id}>{c.name} {c.is_busy ? '(Ocupado)' : ''}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                        <Button className="w-full" onClick={handleDispatch} disabled={!selectedCourierId}>Confirmar</Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
+            {/* --- NOVO MODAL DE DESPACHO --- */}
+            {dispatchOrder && (
+                <DispatchModal
+                    isOpen={!!dispatchOrder}
+                    order={dispatchOrder}
+                    onClose={() => setDispatchOrder(null)}
+                    onSuccess={() => {
+                        setDispatchOrder(null);
+                        fetchData();
+                    }}
+                />
+            )}
 
-            {/* Sheet para adicionar itens (Reutilizando componente) */}
+            {/* Sheet para adicionar itens */}
             <OrderSheet
                 isOpen={isSheetOpen}
                 onClose={() => setIsSheetOpen(false)}
                 onOrderSent={fetchData}
-                orderId={sheetOrderId} // Passa o ID do delivery criado
+                orderId={sheetOrderId}
             />
         </div>
     );
