@@ -3,12 +3,19 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+
+// Componente de Proteção
+import { ProtectedRoute } from "./components/ProtectedRoute";
+
+// Páginas Públicas
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import AccessControl from "./pages/AccessControl";
 import VenueDetail from "./pages/VenueDetail";
+import PublicMenu from "./pages/public/PublicMenu";
+import CourierApp from "./pages/public/CourierApp";
 
-// --- NOVOS IMPORTS DO PAINEL ---
+// Páginas Protegidas (Painel)
 import RestaurantLayout from "./components/RestaurantLayout";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
@@ -19,9 +26,7 @@ import KDS from "./pages/KDS";
 import Cashier from "./pages/Cashier";
 import Inventory from "./pages/Inventory";
 import Couriers from "./pages/Couriers";
-import PublicMenu from "./pages/public/PublicMenu";
 import Operations from "./pages/Operations";
-import CourierApp from "./pages/public/CourierApp";
 
 const queryClient = new QueryClient();
 
@@ -32,25 +37,35 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
+          {/* --- ROTAS PÚBLICAS (Acessíveis sem login) --- */}
           <Route path="/auth" element={<Auth />} />
           <Route path="/access-control" element={<AccessControl />} />
           <Route path="/place/:id" element={<VenueDetail />} />
 
+          {/* Menu e Tracking são públicos para o cliente final */}
           <Route path="/menu/:id" element={<PublicMenu />} />
+
+          {/* App do Motoboy (Login separado interno) */}
           <Route path="/driver/:id" element={<CourierApp />} />
 
-          {/* ESTRUTURA DO PAINEL ADMINISTRATIVO */}
-          <Route path="/" element={<RestaurantLayout />}>
-            <Route index element={<Operations />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="orders" element={<Orders />} />
-            <Route path="kds" element={<KDS />} />
-            <Route path="tables" element={<Tables />} />
-            <Route path="menu" element={<Menu />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="cashier" element={<Cashier />} />
-            <Route path="couriers" element={<Couriers />} />
-            <Route path="inventory" element={<Inventory />} />
+
+          {/* --- ROTAS PROTEGIDAS (Exigem Login) --- */}
+          <Route element={<ProtectedRoute />}>
+
+            {/* Estrutura do Painel Administrativo (Dono do Restaurante) */}
+            <Route path="/" element={<RestaurantLayout />}>
+              <Route index element={<Operations />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="orders" element={<Orders />} />
+              <Route path="kds" element={<KDS />} />
+              <Route path="tables" element={<Tables />} />
+              <Route path="menu" element={<Menu />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="cashier" element={<Cashier />} />
+              <Route path="couriers" element={<Couriers />} />
+              <Route path="inventory" element={<Inventory />} />
+            </Route>
+
           </Route>
 
           <Route path="*" element={<NotFound />} />
