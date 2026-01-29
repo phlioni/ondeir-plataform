@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Users, Armchair, QrCode } from "lucide-react";
-import OrderSheet from "@/components/OrderSheet"; // Importação do componente de pedido
+import OrderSheet from "@/components/OrderSheet";
 
 export default function Tables() {
     const { toast } = useToast();
@@ -22,6 +22,16 @@ export default function Tables() {
 
     useEffect(() => {
         fetchTables();
+
+        // --- ADICIONADO: REALTIME PARA MESAS ---
+        // Isso garante que se um pedido for cancelado lá em Orders, a mesa aqui fica VERDE sozinha.
+        const channel = supabase.channel('tables_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurant_tables' }, () => {
+                fetchTables();
+            })
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
     }, []);
 
     const fetchTables = async () => {
@@ -140,12 +150,11 @@ export default function Tables() {
                 ))}
             </div>
 
-            {/* COMPONENTE DA COMANDA DIGITAL (GAVETA LATERAL) */}
             <OrderSheet
                 table={selectedTable}
                 isOpen={isSheetOpen}
                 onClose={() => setIsSheetOpen(false)}
-                onOrderSent={fetchTables} // Atualiza status da mesa quando envia pedido
+                onOrderSent={fetchTables}
             />
         </div>
     );

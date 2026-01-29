@@ -4,13 +4,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Clock, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus, Coins, Calculator, PackageCheck, XCircle } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea"; // Importei Textarea
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"; // Adicionei Description/Footer
+import { Loader2, Clock, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus, Coins, Calculator, PackageCheck, XCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import OrderSheet from "@/components/OrderSheet";
 import { DispatchModal } from "@/components/DispatchModal";
 
-// 1. ADICIONADO: address_data no tipo
+// 1. ADICIONADO: address_data e cancellation_reason no tipo
 type Order = {
     id: string;
     display_id: number;
@@ -21,7 +22,8 @@ type Order = {
     address_number?: string;
     address_neighborhood?: string;
     address_complement?: string;
-    address_data?: any; // Novo campo para fallback
+    address_data?: any;
+    cancellation_reason?: string; // Novo campo
     total_amount: number;
     subtotal?: number;
     delivery_fee?: number;
@@ -44,8 +46,16 @@ export default function Orders() {
     const [dispatchOrder, setDispatchOrder] = useState<Order | null>(null);
     const [isNewDeliveryOpen, setIsNewDeliveryOpen] = useState(false);
     const [newDelivery, setNewDelivery] = useState({ name: "", phone: "", address: "" });
+
+    // Estados do Pedido (Sheet)
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [sheetOrderId, setSheetOrderId] = useState<string | undefined>(undefined);
+
+    // --- NOVO: Estados para o Modal de Cancelamento ---
+    const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+    const [orderToCancel, setOrderToCancel] = useState<string | null>(null);
+    const [cancelReason, setCancelReason] = useState("");
+    const [canceling, setCanceling] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -79,11 +89,41 @@ export default function Orders() {
         else { toast({ title: "Atualizado!" }); fetchData(); }
     };
 
-    const cancelOrder = async (id: string) => {
-        if (!confirm("Tem certeza que deseja cancelar este pedido?")) return;
-        const { error } = await supabase.from('orders').update({ status: 'canceled' }).eq('id', id);
-        if (error) toast({ title: "Erro ao cancelar", variant: "destructive" });
-        else { toast({ title: "Pedido cancelado" }); fetchData(); }
+    // --- NOVA LÓGICA DE CANCELAMENTO ---
+    const openCancelDialog = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation(); // Evita abrir o Sheet ao clicar no botão
+        setOrderToCancel(id);
+        setCancelReason("");
+        setIsCancelDialogOpen(true);
+    };
+
+    const handleConfirmCancel = async () => {
+        if (!orderToCancel) return;
+        if (!cancelReason.trim()) {
+            toast({ title: "Informe o motivo", variant: "destructive" });
+            return;
+        }
+
+        setCanceling(true);
+        try {
+            // Atualiza status E motivo. A trigger do banco cuidará do estorno e mesa.
+            const { error } = await supabase.from('orders')
+                .update({
+                    status: 'canceled',
+                    cancellation_reason: cancelReason
+                })
+                .eq('id', orderToCancel);
+
+            if (error) throw error;
+
+            toast({ title: "Pedido cancelado", description: "O app foi notificado com o motivo." });
+            setIsCancelDialogOpen(false);
+            fetchData();
+        } catch (e: any) {
+            toast({ title: "Erro ao cancelar", description: e.message, variant: "destructive" });
+        } finally {
+            setCanceling(false);
+        }
     };
 
     const handleCreateDelivery = async () => {
@@ -134,30 +174,18 @@ export default function Orders() {
 
         const calculatedTotal = (subtotal + delivery) - discount;
 
-        // --- 2. CORREÇÃO: Lógica Robusta de Endereço ---
+        // Lógica de Endereço
         let fullAddress = "Endereço não informado";
-
         if (order.order_type === 'delivery') {
-            // Caso A: Dados salvos nas colunas normais (Prioridade)
             if (order.address_street) {
                 fullAddress = `${order.address_street}, ${order.address_number || 'S/N'} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`;
-            }
-            // Caso B: Dados salvos no JSONB (Fallback para pedidos bugados)
-            else if (order.address_data) {
-                // Tenta fazer parse se vier como string, ou usa direto se for objeto
-                const data = typeof order.address_data === 'string'
-                    ? JSON.parse(order.address_data)
-                    : order.address_data;
-
-                // Mapeia possíveis chaves (Português ou Inglês)
+            } else if (order.address_data) {
+                const data = typeof order.address_data === 'string' ? JSON.parse(order.address_data) : order.address_data;
                 const street = data.street || data.rua || data.logradouro;
                 const number = data.number || data.numero;
                 const hood = data.neighborhood || data.bairro;
                 const comp = data.complement || data.complemento;
-
-                if (street) {
-                    fullAddress = `${street}, ${number || 'S/N'} - ${hood || ''} ${comp ? `(${comp})` : ''}`;
-                }
+                if (street) fullAddress = `${street}, ${number || 'S/N'} - ${hood || ''} ${comp ? `(${comp})` : ''}`;
             }
         } else {
             fullAddress = `Mesa ${order.restaurant_tables?.table_number || '?'}`;
@@ -177,7 +205,7 @@ export default function Orders() {
                                     size="icon"
                                     variant="ghost"
                                     className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50"
-                                    onClick={(e) => { e.stopPropagation(); cancelOrder(order.id); }}
+                                    onClick={(e) => openCancelDialog(e, order.id)}
                                     title="Cancelar Pedido"
                                 >
                                     <XCircle className="w-4 h-4" />
@@ -276,9 +304,39 @@ export default function Orders() {
                 </div>
             </div>
 
+            {/* MODAL DE DESPACHO */}
             {dispatchOrder && (
                 <DispatchModal isOpen={!!dispatchOrder} order={dispatchOrder} onClose={() => setDispatchOrder(null)} onSuccess={() => { setDispatchOrder(null); fetchData(); }} />
             )}
+
+            {/* MODAL DE CANCELAMENTO (NOVO) */}
+            <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-red-600">
+                            <AlertTriangle className="w-5 h-5" /> Cancelar Pedido
+                        </DialogTitle>
+                        <DialogDescription>
+                            Isso irá liberar a mesa e estornar coins automaticamente. Informe o motivo para o cliente/app.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-2">
+                        <label className="text-sm font-medium mb-1.5 block">Motivo do Cancelamento</label>
+                        <Textarea
+                            placeholder="Ex: Falta de ingrediente, cliente desistiu, erro no pedido..."
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            className="min-h-[100px]"
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsCancelDialogOpen(false)}>Voltar</Button>
+                        <Button variant="destructive" onClick={handleConfirmCancel} disabled={canceling}>
+                            {canceling ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : "Confirmar Cancelamento"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <OrderSheet isOpen={isSheetOpen} onClose={() => setIsSheetOpen(false)} onOrderSent={fetchData} orderId={sheetOrderId} />
         </div>

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Bike, MapPin, CheckCircle2, Navigation, DollarSign, LogOut, Phone, Package, CreditCard, Wallet, Lock, Car, Clock, Calendar, AlertCircle, ChevronRight } from "lucide-react";
+import { Loader2, Bike, MapPin, CheckCircle2, Navigation, DollarSign, LogOut, Phone, Package, CreditCard, Wallet, Lock, Car, Clock, AlertTriangle, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -49,16 +49,43 @@ export default function CourierApp() {
         if (savedCourier) setCourier(JSON.parse(savedCourier));
     }, [marketId]);
 
+    // --- REALTIME LISTENER CORRIGIDO ---
     useEffect(() => {
         if (courier) {
             fetchOrders();
             fetchEarnings();
+
             const channel = supabase.channel('courier_view')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+                .on('postgres_changes', {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'orders'
+                }, (payload: any) => {
+                    // 1. Detecta Cancelamento em Tempo Real
+                    const newOrder = payload.new;
+                    const oldOrder = payload.old; // Disponível se REPLICA IDENTITY FULL estiver ativo
+
+                    // Verifica se o pedido era deste entregador ou estava na lista de disponíveis
+                    const isMine = newOrder.courier_id === courier.id;
+
+                    if (newOrder.status === 'canceled' && isMine) {
+                        toast({
+                            title: "Pedido Cancelado ⚠️",
+                            description: `Motivo: ${newOrder.cancellation_reason || 'Cancelado pelo estabelecimento'}`,
+                            variant: "destructive",
+                            duration: 6000, // Fica mais tempo na tela
+                        });
+                    }
+
+                    // 2. Atualiza as listas
                     fetchOrders();
                     fetchEarnings();
                 })
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, () => {
+                    fetchOrders();
+                })
                 .subscribe();
+
             return () => { supabase.removeChannel(channel); };
         }
     }, [courier]);
@@ -69,13 +96,11 @@ export default function CourierApp() {
         return () => stopTracking();
     }, [courier, myDeliveries.length]);
 
-    // --- NOVA FUNÇÃO DE FORMATAÇÃO DE ENDEREÇO (Igual ao Painel) ---
+    // --- FUNÇÃO DE FORMATAÇÃO DE ENDEREÇO ---
     const formatAddress = (order: any) => {
-        // 1. Tenta formato padrão (colunas)
         if (order.address_street) {
             return `${order.address_street}, ${order.address_number || 'S/N'} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`;
         }
-        // 2. Tenta formato JSON (fallback)
         if (order.address_data) {
             const data = typeof order.address_data === 'string' ? JSON.parse(order.address_data) : order.address_data;
             const street = data.street || data.rua || data.logradouro;
@@ -163,7 +188,16 @@ export default function CourierApp() {
             .is('courier_id', null)
             .order('created_at');
 
-        const { data: mine } = await supabase.from('orders').select('*').eq('market_id', marketId).eq('courier_id', courier.id).neq('status', 'delivered').neq('status', 'canceled').order('created_at');
+        // Note: Continuamos filtrando canceled aqui para remover da lista VISUALMENTE
+        // O aviso (Toast) acontece no Realtime antes dessa lista atualizar e remover o item.
+        const { data: mine } = await supabase.from('orders')
+            .select('*')
+            .eq('market_id', marketId)
+            .eq('courier_id', courier.id)
+            .neq('status', 'delivered')
+            .neq('status', 'canceled')
+            .order('created_at');
+
         setReadyOrders(ready || []);
         setMyDeliveries(mine || []);
     };
@@ -174,7 +208,6 @@ export default function CourierApp() {
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-        // ATENÇÃO: Adicionei 'address_data' na seleção abaixo para garantir que o extrato tenha o endereço fallback
         const { data } = await supabase
             .from('orders')
             .select('id, display_id, delivery_fee, created_at, courier_paid, address_street, address_number, address_neighborhood, address_data')
@@ -283,7 +316,6 @@ export default function CourierApp() {
         }
     };
 
-    // Componente de Lista de Extrato ATUALIZADO
     const FinancialList = ({ items, emptyMessage }: { items: any[], emptyMessage: string }) => (
         <ScrollArea className="h-[300px] pr-4">
             <div className="space-y-3">
@@ -299,7 +331,6 @@ export default function CourierApp() {
                                     {new Date(item.created_at).toLocaleDateString()} • {new Date(item.created_at).toLocaleTimeString().slice(0, 5)}
                                 </span>
                             </div>
-                            {/* Uso da nova função formatAddress aqui */}
                             <p className="text-xs text-gray-600 line-clamp-2">
                                 <MapPin className="w-3 h-3 inline mr-1 text-gray-400" />
                                 {formatAddress(item)}
@@ -381,8 +412,6 @@ export default function CourierApp() {
                         const discount = Number(order.discount_amount || 0);
                         const total = (subtotal + delivery) - discount;
                         const originalValue = subtotal + delivery;
-
-                        // USO DA NOVA LÓGICA DE ENDEREÇO
                         const fullAddress = formatAddress(order);
 
                         return (
@@ -438,7 +467,6 @@ export default function CourierApp() {
                 <TabsContent value="pool" className="p-4 space-y-4 mt-0">
                     {readyOrders.length === 0 && (<div className="text-center py-20 text-gray-400">Nenhum pedido pronto.</div>)}
                     {readyOrders.map(order => {
-                        // USO DA NOVA LÓGICA DE ENDEREÇO
                         const fullAddress = formatAddress(order);
                         return (
                             <Card key={order.id} className="opacity-90 hover:opacity-100 transition-opacity">
@@ -464,14 +492,12 @@ export default function CourierApp() {
                 </DialogContent>
             </Dialog>
 
-            {/* MODAL FINANCEIRO COMPLETO */}
             <Dialog open={isFinanceModalOpen} onOpenChange={setIsFinanceModalOpen}>
                 <DialogContent className="sm:max-w-sm max-h-[90vh]">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2"><Wallet className="w-5 h-5 text-green-600" /> Meus Ganhos</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
-                        {/* CARD RESUMO */}
                         <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-4 rounded-xl text-white shadow-lg">
                             <div className="flex justify-between items-center mb-2">
                                 <p className="text-xs text-gray-400 font-bold uppercase">Saldo a Receber</p>
@@ -485,7 +511,6 @@ export default function CourierApp() {
                             </div>
                         </div>
 
-                        {/* ABAS: A RECEBER vs RECEBIDOS */}
                         <Tabs defaultValue="pending" className="w-full">
                             <TabsList className="grid w-full grid-cols-2">
                                 <TabsTrigger value="pending">A Receber</TabsTrigger>
