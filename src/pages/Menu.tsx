@@ -6,8 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, Trash, Image as ImageIcon, ScrollText, X } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2, Plus, Trash, Image as ImageIcon, ScrollText, X, Coins } from "lucide-react";
 
 export default function Menu() {
     const { toast } = useToast();
@@ -139,21 +139,47 @@ export default function Menu() {
 
                 {/* LISTA DE PRODUTOS */}
                 <div className="lg:col-span-2 space-y-3">
-                    {menuItems.map(item => (
-                        <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm flex gap-4 items-center">
-                            <div className="w-16 h-16 bg-gray-100 rounded-lg bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${item.image_url || '/placeholder.svg'})` }} />
-                            <div className="flex-1 min-w-0">
-                                <div className="flex justify-between"><h4 className="font-bold">{item.name}</h4><span className="text-primary font-bold">R$ {item.price.toFixed(2)}</span></div>
-                                <div className="flex gap-2 mt-1">
-                                    <p className="text-xs text-gray-500 truncate flex-1">{item.description}</p>
-                                    <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={() => openRecipe(item)}>
-                                        <ScrollText className="w-3 h-3" /> Ficha Técnica
-                                    </Button>
+                    {menuItems.map(item => {
+                        // Cálculo de Gamificação
+                        // Ganha 1 pra 1 (Regra Fixa)
+                        const coinsReward = Math.floor(item.price);
+                        // Custa 20x (Regra Fixa: 1 Real = 20 Coins)
+                        const coinsPrice = Math.ceil(item.price * 20);
+
+                        return (
+                            <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm flex gap-4 items-center">
+                                <div className="w-16 h-16 bg-gray-100 rounded-lg bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${item.image_url || '/placeholder.svg'})` }} />
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-start">
+                                        <h4 className="font-bold">{item.name}</h4>
+                                        <div className="text-right">
+                                            <span className="text-primary font-bold block">R$ {item.price.toFixed(2)}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* SEÇÃO DE COINS (NOVA) */}
+                                    <div className="flex gap-3 text-xs mt-1 mb-2">
+                                        <div className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100" title="Quanto o cliente ganha ao comprar">
+                                            <Coins className="w-3 h-3" />
+                                            <span className="font-semibold">Ganha: {coinsReward}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100" title="Quanto custa para comprar com moedas">
+                                            <Coins className="w-3 h-3" />
+                                            <span className="font-semibold">Compra: {coinsPrice}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2 mt-1">
+                                        <p className="text-xs text-gray-500 truncate flex-1">{item.description}</p>
+                                        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={() => openRecipe(item)}>
+                                            <ScrollText className="w-3 h-3" /> Ficha Técnica
+                                        </Button>
+                                    </div>
                                 </div>
+                                <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}><Trash className="w-4 h-4 text-gray-400 hover:text-red-600" /></Button>
                             </div>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}><Trash className="w-4 h-4 text-gray-400 hover:text-red-600" /></Button>
-                        </div>
-                    ))}
+                        )
+                    })}
                 </div>
             </div>
 

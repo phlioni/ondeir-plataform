@@ -7,13 +7,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Pencil, Trash2, Shield, ShieldAlert, Power, Search } from "lucide-react";
+import { Loader2, UserPlus, Pencil, Trash2, Shield, ShieldAlert, Power, Wallet, Settings } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { AdminCoinsManager } from "@/components/AdminCoinsManager"; // <--- NOVO COMPONENTE
+import { useNavigate } from "react-router-dom";
 
 export default function AccessControl() {
     const { toast } = useToast();
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [users, setUsers] = useState<any[]>([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -30,8 +34,26 @@ export default function AccessControl() {
     });
 
     useEffect(() => {
-        fetchUsers();
-    }, []);
+        const checkAccessAndFetch = async () => {
+            // 1. Verificação de Segurança
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (user?.email !== "ph.lioni@hotmail.com") {
+                toast({
+                    title: "Acesso Negado",
+                    description: "Você não tem permissão para acessar o Centro de Controle.",
+                    variant: "destructive"
+                });
+                navigate("/");
+                return;
+            }
+
+            // 2. Se for autorizado, busca os usuários
+            fetchUsers();
+        };
+
+        checkAccessAndFetch();
+    }, [navigate, toast]);
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -101,7 +123,7 @@ export default function AccessControl() {
         setFormData({
             name: user.display_name,
             email: user.email,
-            password: "", // Senha em branco na edição significa "não alterar"
+            password: "",
             role: user.role,
             active: !user.banned_until
         });
@@ -122,134 +144,160 @@ export default function AccessControl() {
     };
 
     return (
-        <div className="p-6 max-w-7xl mx-auto space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Shield className="text-primary" /> Gestão de Acesso
-                    </h1>
-                    <p className="text-gray-500">Administre usuários, permissões e status.</p>
-                </div>
+        <div className="p-6 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+            {/* Header Principal da Página */}
+            <div className="flex flex-col gap-1">
+                <h1 className="text-2xl font-bold flex items-center gap-2">
+                    <Settings className="text-primary w-8 h-8" />
+                    Centro de Controle (Super Admin)
+                </h1>
+                <p className="text-gray-500">Gerencie acessos da equipe e aprove solicitações financeiras.</p>
+            </div>
 
-                <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
-                    <DialogTrigger asChild>
-                        <Button><UserPlus className="w-4 h-4 mr-2" /> Novo Usuário</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>{editingUser ? 'Editar Usuário' : 'Criar Novo Usuário'}</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Nome Completo</label>
-                                <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">E-mail</label>
-                                <Input value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} disabled={!!editingUser} />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Senha {editingUser && "(Deixe em branco para manter)"}</label>
-                                <Input type="password" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Nível de Acesso</label>
-                                    <Select value={formData.role} onValueChange={v => setFormData({ ...formData, role: v })}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="user">Usuário Comum</SelectItem>
-                                            <SelectItem value="partner">Parceiro (Dono)</SelectItem>
-                                            <SelectItem value="admin">Administrador</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                {editingUser && (
+            {/* Sistema de Abas */}
+            <Tabs defaultValue="users" className="space-y-6">
+                <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+                    <TabsTrigger value="users" className="flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        Equipe & Acessos
+                    </TabsTrigger>
+                    <TabsTrigger value="coins" className="flex items-center gap-2">
+                        <Wallet className="h-4 w-4" />
+                        Solicitações Coins
+                    </TabsTrigger>
+                </TabsList>
+
+                {/* ABA 1: Gestão de Usuários */}
+                <TabsContent value="users" className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-lg font-semibold text-gray-700">Membros Ativos</h2>
+
+                        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
+                            <DialogTrigger asChild>
+                                <Button><UserPlus className="w-4 h-4 mr-2" /> Novo Usuário</Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>{editingUser ? 'Editar Usuário' : 'Criar Novo Usuário'}</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
                                     <div className="space-y-2">
-                                        <label className="text-sm font-medium">Status</label>
-                                        <Select value={formData.active ? 'true' : 'false'} onValueChange={v => setFormData({ ...formData, active: v === 'true' })}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="true">Ativo</SelectItem>
-                                                <SelectItem value="false">Inativo (Banido)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <label className="text-sm font-medium">Nome Completo</label>
+                                        <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                                     </div>
-                                )}
-                            </div>
-                            <Button className="w-full mt-4" onClick={handleSubmit} disabled={actionLoading}>
-                                {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Salvar
-                            </Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
-            </div>
-
-            <div className="border rounded-lg bg-white shadow-sm overflow-hidden">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Usuário</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead>Função</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Último Acesso</TableHead>
-                            <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center">
-                                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
-                                </TableCell>
-                            </TableRow>
-                        ) : users.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={6} className="text-center py-8 text-gray-500">Nenhum usuário encontrado.</TableCell>
-                            </TableRow>
-                        ) : (
-                            users.map((user) => (
-                                <TableRow key={user.id}>
-                                    <TableCell className="flex items-center gap-3">
-                                        <Avatar>
-                                            <AvatarImage src={user.avatar_url} />
-                                            <AvatarFallback>{user.display_name?.charAt(0).toUpperCase()}</AvatarFallback>
-                                        </Avatar>
-                                        <span className="font-medium">{user.display_name}</span>
-                                    </TableCell>
-                                    <TableCell>{user.email}</TableCell>
-                                    <TableCell>{getRoleBadge(user.role)}</TableCell>
-                                    <TableCell>
-                                        {user.banned_until ? (
-                                            <Badge variant="destructive" className="flex w-fit items-center gap-1"><Power className="w-3 h-3" /> Inativo</Badge>
-                                        ) : (
-                                            <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 flex w-fit items-center gap-1">Ativo</Badge>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="text-gray-500 text-sm">
-                                        {user.last_sign_in_at
-                                            ? format(new Date(user.last_sign_in_at), "dd 'de' MMM, HH:mm", { locale: ptBR })
-                                            : "Nunca acessou"
-                                        }
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <Button variant="ghost" size="icon" onClick={() => handleEditClick(user)}>
-                                                <Pencil className="w-4 h-4 text-blue-500" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)}>
-                                                <Trash2 className="w-4 h-4 text-red-500" />
-                                            </Button>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">E-mail</label>
+                                        <Input value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} disabled={!!editingUser} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Senha {editingUser && "(Deixe em branco para manter)"}</label>
+                                        <Input type="password" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Nível de Acesso</label>
+                                            <Select value={formData.role} onValueChange={v => setFormData({ ...formData, role: v })}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="user">Usuário Comum</SelectItem>
+                                                    <SelectItem value="partner">Parceiro (Dono)</SelectItem>
+                                                    <SelectItem value="admin">Administrador</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-                                    </TableCell>
+                                        {editingUser && (
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium">Status</label>
+                                                <Select value={formData.active ? 'true' : 'false'} onValueChange={v => setFormData({ ...formData, active: v === 'true' })}>
+                                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="true">Ativo</SelectItem>
+                                                        <SelectItem value="false">Inativo (Banido)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <Button className="w-full mt-4" onClick={handleSubmit} disabled={actionLoading}>
+                                        {actionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Salvar
+                                    </Button>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
+
+                    <div className="border rounded-lg bg-white shadow-sm overflow-hidden">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Usuário</TableHead>
+                                    <TableHead>Email</TableHead>
+                                    <TableHead>Função</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead>Último Acesso</TableHead>
+                                    <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
+                            </TableHeader>
+                            <TableBody>
+                                {loading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="h-24 text-center">
+                                            <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
+                                        </TableCell>
+                                    </TableRow>
+                                ) : users.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="text-center py-8 text-gray-500">Nenhum usuário encontrado.</TableCell>
+                                    </TableRow>
+                                ) : (
+                                    users.map((user) => (
+                                        <TableRow key={user.id}>
+                                            <TableCell className="flex items-center gap-3">
+                                                <Avatar>
+                                                    <AvatarImage src={user.avatar_url} />
+                                                    <AvatarFallback>{user.display_name?.charAt(0).toUpperCase()}</AvatarFallback>
+                                                </Avatar>
+                                                <span className="font-medium">{user.display_name}</span>
+                                            </TableCell>
+                                            <TableCell>{user.email}</TableCell>
+                                            <TableCell>{getRoleBadge(user.role)}</TableCell>
+                                            <TableCell>
+                                                {user.banned_until ? (
+                                                    <Badge variant="destructive" className="flex w-fit items-center gap-1"><Power className="w-3 h-3" /> Inativo</Badge>
+                                                ) : (
+                                                    <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 flex w-fit items-center gap-1">Ativo</Badge>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-gray-500 text-sm">
+                                                {user.last_sign_in_at
+                                                    ? format(new Date(user.last_sign_in_at), "dd 'de' MMM, HH:mm", { locale: ptBR })
+                                                    : "Nunca acessou"
+                                                }
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleEditClick(user)}>
+                                                        <Pencil className="w-4 h-4 text-blue-500" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(user.id)}>
+                                                        <Trash2 className="w-4 h-4 text-red-500" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </TabsContent>
+
+                {/* ABA 2: Admin de Coins (Para Aprovação) */}
+                <TabsContent value="coins">
+                    <AdminCoinsManager />
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

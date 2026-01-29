@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Bike, MapPin, CheckCircle2, Navigation, DollarSign, LogOut, Phone, Package, CreditCard, Wallet, Lock, Car, AlertTriangle, Clock, Calendar } from "lucide-react";
+import { Loader2, Bike, MapPin, CheckCircle2, Navigation, DollarSign, LogOut, Phone, Package, CreditCard, Wallet, Lock, Car, Clock, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 
@@ -23,7 +23,7 @@ export default function CourierApp() {
 
     // Modais
     const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
-    const [isFinanceModalOpen, setIsFinanceModalOpen] = useState(false); // NOVO
+    const [isFinanceModalOpen, setIsFinanceModalOpen] = useState(false);
     const [selectedOrderToFinish, setSelectedOrderToFinish] = useState<string | null>(null);
     const [deliveryCodeInput, setDeliveryCodeInput] = useState("");
     const [verifying, setVerifying] = useState(false);
@@ -66,9 +66,6 @@ export default function CourierApp() {
             return;
         }
         if (watchIdRef.current !== null) return;
-
-        console.log("📍 Iniciando GPS...");
-        setGpsError(null);
 
         const onSuccess = async (position: GeolocationPosition) => {
             const { latitude, longitude } = position.coords;
@@ -135,7 +132,6 @@ export default function CourierApp() {
         setMyDeliveries(mine || []);
     };
 
-    // Cálculo Financeiro
     const fetchEarnings = async () => {
         if (!courier) return;
         const now = new Date();
@@ -212,11 +208,18 @@ export default function CourierApp() {
     };
 
     const getPaymentInfo = (order: any) => {
+        const total = Number(order.total_amount || 0); // Total já com desconto aplicado
+
         switch (order.payment_method) {
             case 'credit': return { label: 'Maq. Crédito', icon: CreditCard, color: 'text-blue-600 bg-blue-50' };
             case 'debit': return { label: 'Maq. Débito', icon: CreditCard, color: 'text-blue-600 bg-blue-50' };
             case 'pix': return { label: 'Cobrar PIX', icon: DollarSign, color: 'text-green-600 bg-green-50' };
-            case 'cash': return { label: order.change_for ? `Dinheiro (Troco p/ ${order.change_for})` : 'Dinheiro', icon: Wallet, color: 'text-green-600 bg-green-50' };
+            case 'cash':
+                return {
+                    label: order.change_for ? `Dinheiro (Troco p/ ${order.change_for})` : 'Dinheiro',
+                    icon: Wallet,
+                    color: total > 0 ? 'text-green-600 bg-green-50' : 'text-gray-600 bg-gray-50'
+                };
             default: return { label: 'Ver na Entrega', icon: DollarSign, color: 'text-gray-600 bg-gray-50' };
         }
     };
@@ -249,7 +252,6 @@ export default function CourierApp() {
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    {/* Botão Carteira */}
                     <Button size="sm" variant="ghost" className="bg-green-600/20 text-green-400 hover:bg-green-600/30 hover:text-green-300 border border-green-600/30 gap-1" onClick={() => setIsFinanceModalOpen(true)}>
                         <DollarSign className="w-4 h-4" /> <span className="font-bold">{earnings.today.toFixed(0)}</span>
                     </Button>
@@ -279,6 +281,12 @@ export default function CourierApp() {
                     {myDeliveries.map(order => {
                         const paymentInfo = getPaymentInfo(order);
                         const deadline = getDeadline(order);
+                        const discount = Number(order.discount_amount || 0);
+                        const total = Number(order.total_amount || 0);
+
+                        // Cálculo para exibir o valor original riscado
+                        const originalValue = total + discount;
+
                         return (
                             <Card key={order.id} className="border-l-4 border-l-blue-500 shadow-md overflow-hidden relative">
                                 <div className="absolute top-0 right-0 bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-bl-lg border-b border-l border-green-200">
@@ -296,8 +304,19 @@ export default function CourierApp() {
                                         </div>
                                     </div>
 
+                                    {/* CARD DE COBRANÇA */}
                                     <div className={`p-3 rounded-lg border mb-4 flex flex-col gap-2 ${paymentInfo.color} border-current/20`}>
-                                        <div className="flex justify-between items-center"><span className="text-sm font-bold uppercase flex items-center gap-2"><DollarSign className="w-4 h-4" /> Cobrar do Cliente:</span><span className="font-black text-xl">R$ {order.total_amount.toFixed(2)}</span></div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm font-bold uppercase flex items-center gap-2"><DollarSign className="w-4 h-4" /> Cobrar do Cliente:</span>
+                                            <div className="text-right">
+                                                {discount > 0 && (
+                                                    <span className="block text-[10px] opacity-70 mb-0.5 font-normal line-through">
+                                                        R$ {originalValue.toFixed(2)}
+                                                    </span>
+                                                )}
+                                                <span className="font-black text-xl">R$ {total.toFixed(2)}</span>
+                                            </div>
+                                        </div>
                                         <div className="flex items-center gap-2 text-sm font-medium border-t border-current/10 pt-2"><paymentInfo.icon className="w-4 h-4" />{paymentInfo.label}</div>
                                     </div>
 

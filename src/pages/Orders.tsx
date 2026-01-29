@@ -5,10 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Clock, CheckCircle2, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus } from "lucide-react";
+import { Loader2, Clock, CheckCircle2, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus, Coins, Calculator } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import OrderSheet from "@/components/OrderSheet";
-import { DispatchModal } from "@/components/DispatchModal"; // <--- NOVO COMPONENTE
+import { DispatchModal } from "@/components/DispatchModal";
 
 type Order = {
     id: string;
@@ -17,9 +17,13 @@ type Order = {
     order_type: 'table' | 'delivery';
     customer_name?: string;
     total_amount: number;
+    subtotal?: number;
+    delivery_fee?: number;
+    discount_amount?: number;
+    coins_used?: number;
     created_at: string;
     courier_id?: string;
-    market_id: string; // Importante para o DispatchModal
+    market_id: string;
     couriers?: { name: string };
     restaurant_tables?: { table_number: string };
     order_items?: { name: string; quantity: number; notes?: string }[];
@@ -31,14 +35,9 @@ export default function Orders() {
     const [loading, setLoading] = useState(true);
     const [marketId, setMarketId] = useState<string | null>(null);
 
-    // Controle do Dispatch (Agora usa o objeto do pedido diretamente)
     const [dispatchOrder, setDispatchOrder] = useState<Order | null>(null);
-
-    // Novo Delivery Manual
     const [isNewDeliveryOpen, setIsNewDeliveryOpen] = useState(false);
     const [newDelivery, setNewDelivery] = useState({ name: "", phone: "", address: "" });
-
-    // OrderSheet (Adicionar Itens)
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [sheetOrderId, setSheetOrderId] = useState<string | undefined>(undefined);
 
@@ -106,51 +105,85 @@ export default function Orders() {
         setIsSheetOpen(true);
     };
 
-    const OrderCard = ({ order }: { order: Order }) => (
-        <Card className="mb-3 border-l-4 border-l-primary shadow-sm hover:shadow-md transition-all cursor-pointer" onClick={() => openOrderSheet(order.id)}>
-            <CardContent className="p-4">
-                <div className="flex justify-between items-start mb-2">
-                    <div className="flex flex-col">
-                        <span className="font-bold text-lg">#{order.display_id}</span>
-                        <span className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <Badge variant={order.order_type === 'delivery' ? 'secondary' : 'outline'}>
-                        {order.order_type === 'delivery' ? <Bike className="w-3 h-3 mr-1" /> : <Receipt className="w-3 h-3 mr-1" />}
-                        {order.order_type === 'delivery' ? 'Delivery' : `Mesa ${order.restaurant_tables?.table_number}`}
-                    </Badge>
-                </div>
-                <div className="space-y-1 mb-3">
-                    {order.customer_name && <p className="text-sm font-medium">{order.customer_name}</p>}
-                    {order.order_items?.map((item, idx) => (
-                        <p key={idx} className="text-sm text-gray-600"><span className="font-bold">{item.quantity}x</span> {item.name}</p>
-                    ))}
-                    {order.courier_id && <p className="text-xs text-blue-600 font-bold flex items-center gap-1 mt-2 bg-blue-50 p-1 rounded w-fit"><Bike className="w-3 h-3" /> {order.couriers?.name}</p>}
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t mt-2" onClick={e => e.stopPropagation()}>
-                    <span className="font-bold text-sm">R$ {order.total_amount}</span>
-                    <div className="flex gap-2">
-                        {order.status === 'pending' && <Button size="sm" onClick={() => updateStatus(order.id, 'preparing')} className="bg-blue-600 h-8"><ChefHat className="w-4 h-4 mr-1" /> Preparar</Button>}
-                        {(order.status === 'preparing' || order.status === 'confirmed') && <Button size="sm" onClick={() => updateStatus(order.id, 'ready')} className="bg-green-600 h-8"><CheckCircle2 className="w-4 h-4 mr-1" /> Pronto</Button>}
+    const OrderCard = ({ order }: { order: Order }) => {
+        const subtotal = Number(order.subtotal || 0);
+        const delivery = Number(order.delivery_fee || 0);
+        const discount = Number(order.discount_amount || 0);
 
-                        {/* Lógica do Botão de Despacho */}
-                        {order.status === 'ready' && (
-                            order.order_type === 'delivery' && !order.courier_id ? (
-                                <Button
-                                    size="sm"
-                                    onClick={() => setDispatchOrder(order)} // <--- Abre o novo Modal
-                                    className="bg-orange-500 hover:bg-orange-600 h-8"
-                                >
-                                    <Send className="w-4 h-4 mr-1" /> Despachar
-                                </Button>
-                            ) : (
-                                <Button size="sm" onClick={() => updateStatus(order.id, 'delivered')} variant="outline" className="h-8">Concluir</Button>
-                            )
+        // Garante que o total exibido seja o cálculo real se o banco estiver inconsistente (fallback)
+        // Mas confiamos preferencialmente no total_amount do banco se ele foi corrigido pelo SQL
+        const total = Number(order.total_amount);
+
+        return (
+            <Card className={`mb-3 border-l-4 shadow-sm hover:shadow-md transition-all cursor-pointer ${discount > 0 ? 'border-l-green-500 bg-green-50/10' : 'border-l-primary'}`} onClick={() => openOrderSheet(order.id)}>
+                <CardContent className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="flex flex-col">
+                            <span className="font-bold text-lg">#{order.display_id}</span>
+                            <span className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <Badge variant={order.order_type === 'delivery' ? 'secondary' : 'outline'}>
+                            {order.order_type === 'delivery' ? <Bike className="w-3 h-3 mr-1" /> : <Receipt className="w-3 h-3 mr-1" />}
+                            {order.order_type === 'delivery' ? 'Delivery' : `Mesa ${order.restaurant_tables?.table_number}`}
+                        </Badge>
+                    </div>
+
+                    <div className="space-y-1 mb-3 border-b border-dashed pb-3">
+                        {order.customer_name && <p className="text-sm font-medium">{order.customer_name}</p>}
+                        {order.order_items?.map((item, idx) => (
+                            <p key={idx} className="text-sm text-gray-600"><span className="font-bold">{item.quantity}x</span> {item.name}</p>
+                        ))}
+                    </div>
+
+                    {/* BLOCÃO FINANCEIRO */}
+                    <div className="bg-gray-50 p-2 rounded-md mb-3 space-y-1 text-xs text-gray-600" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between">
+                            <span>Produtos:</span>
+                            <span>R$ {subtotal.toFixed(2)}</span>
+                        </div>
+                        {delivery > 0 && (
+                            <div className="flex justify-between">
+                                <span>Entrega:</span>
+                                <span>+ R$ {delivery.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {discount > 0 && (
+                            <div className="flex justify-between text-green-700 font-bold border-t border-green-200 pt-1 mt-1">
+                                <span className="flex items-center gap-1"><Coins className="w-3 h-3" /> Desconto ({order.coins_used}):</span>
+                                <span>- R$ {discount.toFixed(2)}</span>
+                            </div>
                         )}
                     </div>
-                </div>
-            </CardContent>
-        </Card>
-    );
+
+                    <div className="flex justify-between items-center pt-2 border-t mt-2" onClick={e => e.stopPropagation()}>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                                <Calculator className="w-3 h-3" /> A Receber
+                            </span>
+                            <span className={`font-black text-xl ${discount > 0 ? 'text-green-700' : 'text-gray-900'}`}>
+                                R$ {total.toFixed(2)}
+                            </span>
+                        </div>
+
+                        <div className="flex gap-2">
+                            {order.status === 'pending' && <Button size="sm" onClick={() => updateStatus(order.id, 'preparing')} className="bg-blue-600 h-8"><ChefHat className="w-4 h-4 mr-1" /> Preparar</Button>}
+                            {(order.status === 'preparing' || order.status === 'confirmed') && <Button size="sm" onClick={() => updateStatus(order.id, 'ready')} className="bg-green-600 h-8"><CheckCircle2 className="w-4 h-4 mr-1" /> Pronto</Button>}
+
+                            {order.status === 'ready' && (
+                                order.order_type === 'delivery' && !order.courier_id ? (
+                                    <Button size="sm" onClick={() => setDispatchOrder(order)} className="bg-orange-500 hover:bg-orange-600 h-8">
+                                        <Send className="w-4 h-4 mr-1" /> Despachar
+                                    </Button>
+                                ) : (
+                                    <Button size="sm" onClick={() => updateStatus(order.id, 'delivered')} variant="outline" className="h-8">Concluir</Button>
+                                )
+                            )}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    };
 
     if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-primary w-10 h-10" /></div>;
 
@@ -161,9 +194,7 @@ export default function Orders() {
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={fetchData}><Clock className="w-4 h-4 mr-2" /> Atualizar</Button>
                     <Dialog open={isNewDeliveryOpen} onOpenChange={setIsNewDeliveryOpen}>
-                        {/* Botão Novo Pedido (Trigger removido para usar controle de estado, ou adicione Trigger aqui se preferir) */}
                         <Button onClick={() => setIsNewDeliveryOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo Pedido</Button>
-
                         <DialogContent>
                             <DialogHeader><DialogTitle>Novo Pedido Delivery</DialogTitle></DialogHeader>
                             <div className="space-y-4 py-4">
@@ -192,26 +223,11 @@ export default function Orders() {
                 </div>
             </div>
 
-            {/* --- NOVO MODAL DE DESPACHO --- */}
             {dispatchOrder && (
-                <DispatchModal
-                    isOpen={!!dispatchOrder}
-                    order={dispatchOrder}
-                    onClose={() => setDispatchOrder(null)}
-                    onSuccess={() => {
-                        setDispatchOrder(null);
-                        fetchData();
-                    }}
-                />
+                <DispatchModal isOpen={!!dispatchOrder} order={dispatchOrder} onClose={() => setDispatchOrder(null)} onSuccess={() => { setDispatchOrder(null); fetchData(); }} />
             )}
 
-            {/* Sheet para adicionar itens */}
-            <OrderSheet
-                isOpen={isSheetOpen}
-                onClose={() => setIsSheetOpen(false)}
-                onOrderSent={fetchData}
-                orderId={sheetOrderId}
-            />
+            <OrderSheet isOpen={isSheetOpen} onClose={() => setIsSheetOpen(false)} onOrderSent={fetchData} orderId={sheetOrderId} />
         </div>
     );
 }

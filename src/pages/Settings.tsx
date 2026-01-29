@@ -7,9 +7,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
-import { Loader2, Save, Upload, Copy, ExternalLink, QrCode, Settings as SettingsIcon, Truck, DollarSign, Clock } from "lucide-react";
+import { Loader2, Save, Upload, Copy, ExternalLink, QrCode, Settings as SettingsIcon, Truck, DollarSign, Clock, Wallet } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IntegrationsTab } from "@/components/IntegrationsTab";
+import { CoinsWallet } from "@/components/CoinsWallet";
 
 const mapContainerStyle = { width: '100%', height: '350px', borderRadius: '0.75rem' };
 const defaultCenter = { lat: -23.550520, lng: -46.633308 };
@@ -63,7 +64,7 @@ export default function Settings() {
 
     const [form, setForm] = useState({
         name: "", category: "", description: "", address: "", amenities: "", cover_image: "", latitude: 0, longitude: 0,
-        delivery_fee: 0, delivery_time_min: 30, delivery_time_max: 45 // NOVOS CAMPOS
+        delivery_fee: 0, delivery_time_min: 30, delivery_time_max: 45
     });
 
     const menuLink = market ? `${window.location.origin}/menu/${market.id}` : "";
@@ -110,9 +111,9 @@ export default function Settings() {
                 name: form.name, category: form.category, description: form.description, address: form.address,
                 amenities: form.amenities.split(",").map(s => s.trim()).filter(Boolean),
                 cover_image: form.cover_image, latitude: form.latitude, longitude: form.longitude, owner_id: user.id,
-                delivery_fee: Number(form.delivery_fee), // NOVO
-                delivery_time_min: Number(form.delivery_time_min), // NOVO
-                delivery_time_max: Number(form.delivery_time_max) // NOVO
+                delivery_fee: Number(form.delivery_fee),
+                delivery_time_min: Number(form.delivery_time_min),
+                delivery_time_max: Number(form.delivery_time_max)
             };
             if (market) await supabase.from("markets").update(payload).eq("id", market.id);
             else await supabase.from("markets").insert(payload);
@@ -137,8 +138,9 @@ export default function Settings() {
             </div>
 
             <Tabs defaultValue="general" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
+                <TabsList className="grid w-full grid-cols-3 md:w-[600px]">
                     <TabsTrigger value="general" className="gap-2"><SettingsIcon className="w-4 h-4" /> Geral</TabsTrigger>
+                    <TabsTrigger value="coins" className="gap-2"><Wallet className="w-4 h-4" /> Carteira Coins</TabsTrigger>
                     <TabsTrigger value="integrations" className="gap-2"><Truck className="w-4 h-4" /> Integrações</TabsTrigger>
                 </TabsList>
 
@@ -169,7 +171,6 @@ export default function Settings() {
                                     <div className="space-y-2"><label className="text-sm font-medium">Categoria</label><Select value={form.category} onValueChange={v => setForm({ ...form, category: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bar">Bar</SelectItem><SelectItem value="Restaurante">Restaurante</SelectItem></SelectContent></Select></div>
                                 </div>
 
-                                {/* NOVOS CAMPOS: Frete e Tempo */}
                                 <div className="grid md:grid-cols-2 gap-5 p-4 bg-gray-50 rounded-xl border border-gray-200">
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium flex items-center gap-2"><DollarSign className="w-4 h-4 text-green-600" /> Taxa de Entrega (R$)</label>
@@ -196,6 +197,10 @@ export default function Settings() {
                             <CardContent className="space-y-4 pt-6"><LocationPicker lat={form.latitude} lng={form.longitude} isLoaded={isLoaded} onLocationSelect={(lat: number, lng: number, add: string) => setForm(prev => ({ ...prev, latitude: lat, longitude: lng, address: add }))} /><Input value={form.address} readOnly className="bg-gray-100" /></CardContent>
                         </Card>
                     </div>
+                </TabsContent>
+
+                <TabsContent value="coins" className="mt-6">
+                    <CoinsWallet />
                 </TabsContent>
 
                 <TabsContent value="integrations" className="mt-6">
