@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Bike, MapPin, CheckCircle2, Navigation, DollarSign, LogOut, Phone, Package, CreditCard, Wallet, Lock, Car, Clock, Calendar, AlertCircle, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area"; // Importante para a lista rolar
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function CourierApp() {
     const { id: marketId } = useParams();
@@ -38,8 +38,8 @@ export default function CourierApp() {
         today: 0,
         month: 0,
         countToday: 0,
-        pending: 0, // A RECEBER
-        paid: 0     // JÁ RECEBIDO
+        pending: 0,
+        paid: 0
     });
     // Lista detalhada para o extrato
     const [financialHistory, setFinancialHistory] = useState<any[]>([]);
@@ -68,6 +68,27 @@ export default function CourierApp() {
         else stopTracking();
         return () => stopTracking();
     }, [courier, myDeliveries.length]);
+
+    // --- NOVA FUNÇÃO DE FORMATAÇÃO DE ENDEREÇO (Igual ao Painel) ---
+    const formatAddress = (order: any) => {
+        // 1. Tenta formato padrão (colunas)
+        if (order.address_street) {
+            return `${order.address_street}, ${order.address_number || 'S/N'} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`;
+        }
+        // 2. Tenta formato JSON (fallback)
+        if (order.address_data) {
+            const data = typeof order.address_data === 'string' ? JSON.parse(order.address_data) : order.address_data;
+            const street = data.street || data.rua || data.logradouro;
+            const number = data.number || data.numero;
+            const hood = data.neighborhood || data.bairro;
+            const comp = data.complement || data.complemento;
+
+            if (street) {
+                return `${street}, ${number || 'S/N'} - ${hood || ''} ${comp ? `(${comp})` : ''}`;
+            }
+        }
+        return "Endereço não informado";
+    };
 
     const startTracking = () => {
         if (!navigator.geolocation) {
@@ -153,17 +174,17 @@ export default function CourierApp() {
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-        // Alterado para trazer dados completos (endereço, id, etc) para a lista
+        // ATENÇÃO: Adicionei 'address_data' na seleção abaixo para garantir que o extrato tenha o endereço fallback
         const { data } = await supabase
             .from('orders')
-            .select('id, display_id, delivery_fee, created_at, courier_paid, address_street, address_number, address_neighborhood')
+            .select('id, display_id, delivery_fee, created_at, courier_paid, address_street, address_number, address_neighborhood, address_data')
             .eq('courier_id', courier.id)
             .eq('status', 'delivered')
             .gte('created_at', startOfMonth)
-            .order('created_at', { ascending: false }); // Ordenado do mais recente
+            .order('created_at', { ascending: false });
 
         if (data) {
-            setFinancialHistory(data); // Salva lista completa
+            setFinancialHistory(data);
 
             let todaySum = 0;
             let monthSum = 0;
@@ -262,7 +283,7 @@ export default function CourierApp() {
         }
     };
 
-    // Componente de Lista de Extrato
+    // Componente de Lista de Extrato ATUALIZADO
     const FinancialList = ({ items, emptyMessage }: { items: any[], emptyMessage: string }) => (
         <ScrollArea className="h-[300px] pr-4">
             <div className="space-y-3">
@@ -278,9 +299,10 @@ export default function CourierApp() {
                                     {new Date(item.created_at).toLocaleDateString()} • {new Date(item.created_at).toLocaleTimeString().slice(0, 5)}
                                 </span>
                             </div>
+                            {/* Uso da nova função formatAddress aqui */}
                             <p className="text-xs text-gray-600 line-clamp-2">
                                 <MapPin className="w-3 h-3 inline mr-1 text-gray-400" />
-                                {item.address_street}, {item.address_number} - {item.address_neighborhood}
+                                {formatAddress(item)}
                             </p>
                         </div>
                         <div className="flex flex-col items-end">
@@ -360,8 +382,8 @@ export default function CourierApp() {
                         const total = (subtotal + delivery) - discount;
                         const originalValue = subtotal + delivery;
 
-                        // ENDEREÇO COMPLETO
-                        const fullAddress = `${order.address_street || ''}, ${order.address_number || ''} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`;
+                        // USO DA NOVA LÓGICA DE ENDEREÇO
+                        const fullAddress = formatAddress(order);
 
                         return (
                             <Card key={order.id} className="border-l-4 border-l-blue-500 shadow-md overflow-hidden relative">
@@ -416,12 +438,13 @@ export default function CourierApp() {
                 <TabsContent value="pool" className="p-4 space-y-4 mt-0">
                     {readyOrders.length === 0 && (<div className="text-center py-20 text-gray-400">Nenhum pedido pronto.</div>)}
                     {readyOrders.map(order => {
-                        const fullAddress = `${order.address_street || ''}, ${order.address_number || ''} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`;
+                        // USO DA NOVA LÓGICA DE ENDEREÇO
+                        const fullAddress = formatAddress(order);
                         return (
                             <Card key={order.id} className="opacity-90 hover:opacity-100 transition-opacity">
                                 <CardContent className="p-4 flex justify-between items-center">
                                     <div>
-                                        <h3 className="font-bold text-gray-900">#{order.display_id} - {order.address_neighborhood}</h3>
+                                        <h3 className="font-bold text-gray-900">#{order.display_id} - {order.address_neighborhood || 'Bairro N/A'}</h3>
                                         <p className="text-xs text-gray-500 mb-1">{fullAddress}</p>
                                         <p className="text-xs text-green-600 font-bold mt-1">Ganho: R$ {Number(order.delivery_fee || 0).toFixed(2)}</p>
                                     </div>

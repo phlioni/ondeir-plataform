@@ -5,11 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Clock, CheckCircle2, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus, Coins, Calculator, PackageCheck, XCircle } from "lucide-react";
+import { Loader2, Clock, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus, Coins, Calculator, PackageCheck, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import OrderSheet from "@/components/OrderSheet";
 import { DispatchModal } from "@/components/DispatchModal";
 
+// 1. ADICIONADO: address_data no tipo
 type Order = {
     id: string;
     display_id: number;
@@ -20,6 +21,7 @@ type Order = {
     address_number?: string;
     address_neighborhood?: string;
     address_complement?: string;
+    address_data?: any; // Novo campo para fallback
     total_amount: number;
     subtotal?: number;
     delivery_fee?: number;
@@ -95,9 +97,9 @@ export default function Orders() {
                 customer_phone: newDelivery.phone,
                 address_street: newDelivery.address,
                 total_amount: 0,
-                subtotal: 0, // Inicia zerado
-                discount_amount: 0, // GARANTIA: Sem desconto manual
-                coins_used: 0       // GARANTIA: Sem moedas manual
+                subtotal: 0,
+                discount_amount: 0,
+                coins_used: 0
             }).select().single();
 
             if (error) throw error;
@@ -124,7 +126,6 @@ export default function Orders() {
         const discount = Number(order.discount_amount || 0);
         const totalRaw = Number(order.total_amount || 0);
 
-        // --- CORREÇÃO ROBUSTA DE CÁLCULO ---
         let subtotal = Number(order.subtotal);
         if (!subtotal && totalRaw > 0) {
             subtotal = totalRaw - delivery + discount;
@@ -133,10 +134,34 @@ export default function Orders() {
 
         const calculatedTotal = (subtotal + delivery) - discount;
 
-        // Formatação do Endereço Completo
-        const fullAddress = order.order_type === 'delivery'
-            ? `${order.address_street || 'Sem rua'}, ${order.address_number || 'S/N'} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`
-            : `Mesa ${order.restaurant_tables?.table_number}`;
+        // --- 2. CORREÇÃO: Lógica Robusta de Endereço ---
+        let fullAddress = "Endereço não informado";
+
+        if (order.order_type === 'delivery') {
+            // Caso A: Dados salvos nas colunas normais (Prioridade)
+            if (order.address_street) {
+                fullAddress = `${order.address_street}, ${order.address_number || 'S/N'} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`;
+            }
+            // Caso B: Dados salvos no JSONB (Fallback para pedidos bugados)
+            else if (order.address_data) {
+                // Tenta fazer parse se vier como string, ou usa direto se for objeto
+                const data = typeof order.address_data === 'string'
+                    ? JSON.parse(order.address_data)
+                    : order.address_data;
+
+                // Mapeia possíveis chaves (Português ou Inglês)
+                const street = data.street || data.rua || data.logradouro;
+                const number = data.number || data.numero;
+                const hood = data.neighborhood || data.bairro;
+                const comp = data.complement || data.complemento;
+
+                if (street) {
+                    fullAddress = `${street}, ${number || 'S/N'} - ${hood || ''} ${comp ? `(${comp})` : ''}`;
+                }
+            }
+        } else {
+            fullAddress = `Mesa ${order.restaurant_tables?.table_number || '?'}`;
+        }
 
         return (
             <Card className={`mb-3 border-l-4 shadow-sm hover:shadow-md transition-all cursor-pointer ${discount > 0 ? 'border-l-green-500 bg-green-50/10' : 'border-l-primary'}`} onClick={() => openOrderSheet(order.id)}>
