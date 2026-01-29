@@ -25,15 +25,12 @@ export default function RestaurantLayout() {
     }, []);
 
     // Definição dos itens de menu
-    const baseMenuItems = [
-        { label: "Operação", icon: Activity, path: "/" },
+    const baseMenuItems = [      
+        { label: "Pedidos", icon: ShoppingBag, path: "/" },  
         { label: "Visão Geral", icon: LayoutDashboard, path: "/dashboard" },
-        { label: "Caixa (PDV)", icon: DollarSign, path: "/cashier" },
-        { label: "Pedidos", icon: ShoppingBag, path: "/orders" },
+        { label: "Caixa (PDV)", icon: DollarSign, path: "/cashier" },        
         { label: "Entregadores", icon: Bike, path: "/couriers" },
-        { label: "Cozinha (KDS)", icon: ChefHat, path: "/kds" },
         { label: "Mesas", icon: Armchair, path: "/tables" },
-        { label: "Estoque", icon: Package, path: "/inventory" },
         { label: "Cardápio", icon: UtensilsCrossed, path: "/menu" },
         { label: "Configurações", icon: Settings, path: "/settings" },
     ];

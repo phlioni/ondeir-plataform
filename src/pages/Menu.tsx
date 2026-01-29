@@ -6,19 +6,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Plus, Trash, Image as ImageIcon, ScrollText, X, Coins } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Loader2, Plus, Trash, Image as ImageIcon, ScrollText, X, Coins, Edit2, Save } from "lucide-react";
 
 export default function Menu() {
     const { toast } = useToast();
     const [menuItems, setMenuItems] = useState<any[]>([]);
-    const [ingredients, setIngredients] = useState<any[]>([]); // Lista de ingredientes disponíveis
+    const [ingredients, setIngredients] = useState<any[]>([]);
     const [marketId, setMarketId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     // Novo Produto
     const [newItem, setNewItem] = useState({ name: "", price: "", description: "", category: "Comida", image_url: "" });
     const [uploading, setUploading] = useState(false);
+
+    // Edição de Produto
+    const [editingItem, setEditingItem] = useState<any>(null);
+    const [isEditOpen, setIsEditOpen] = useState(false);
 
     // Ficha Técnica (Receita)
     const [selectedProduct, setSelectedProduct] = useState<any>(null);
@@ -51,14 +55,19 @@ export default function Menu() {
         setIngredients(data || []);
     };
 
-    // --- LÓGICA DE UPLOAD E ADIÇÃO DE PRODUTO (MANTIDA) ---
-    const handleUpload = async (file: File) => {
+    // --- LÓGICA DE UPLOAD (Genérica para Novo e Edit) ---
+    const handleUpload = async (file: File, isEdit = false) => {
         setUploading(true);
         try {
             const fileName = `menu/${Math.random()}.${file.name.split('.').pop()}`;
             await supabase.storage.from('images').upload(fileName, file);
             const { data } = supabase.storage.from('images').getPublicUrl(fileName);
-            setNewItem(prev => ({ ...prev, image_url: data.publicUrl }));
+
+            if (isEdit) {
+                setEditingItem((prev: any) => ({ ...prev, image_url: data.publicUrl }));
+            } else {
+                setNewItem(prev => ({ ...prev, image_url: data.publicUrl }));
+            }
         } catch (e) { toast({ title: "Erro upload", variant: "destructive" }); } finally { setUploading(false); }
     };
 
@@ -69,17 +78,45 @@ export default function Menu() {
         });
         if (!error) {
             setNewItem({ name: "", price: "", description: "", category: "Comida", image_url: "" });
-            fetchMenu(marketId);
+            if (marketId) fetchMenu(marketId);
             toast({ title: "Item adicionado!" });
         }
     };
 
     const handleDelete = async (id: string) => {
+        if (!confirm("Tem certeza que deseja excluir este item?")) return;
         await supabase.from("menu_items").delete().eq("id", id);
         if (marketId) fetchMenu(marketId);
     };
 
-    // --- NOVA LÓGICA: FICHA TÉCNICA ---
+    // --- NOVA LÓGICA: EDIÇÃO ---
+    const openEditModal = (item: any) => {
+        setEditingItem({ ...item }); // Clona o objeto para edição
+        setIsEditOpen(true);
+    };
+
+    const handleUpdate = async () => {
+        if (!editingItem || !editingItem.name) return;
+
+        const { error } = await supabase.from("menu_items").update({
+            name: editingItem.name,
+            description: editingItem.description,
+            price: parseFloat(editingItem.price),
+            category: editingItem.category,
+            image_url: editingItem.image_url
+        }).eq("id", editingItem.id);
+
+        if (!error) {
+            toast({ title: "Item atualizado!" });
+            setIsEditOpen(false);
+            if (marketId) fetchMenu(marketId);
+        } else {
+            toast({ title: "Erro ao atualizar", variant: "destructive" });
+        }
+    };
+
+
+    // --- LÓGICA: FICHA TÉCNICA ---
     const openRecipe = async (product: any) => {
         setSelectedProduct(product);
         const { data } = await supabase
@@ -102,7 +139,7 @@ export default function Menu() {
         if (error) {
             toast({ title: "Erro ao adicionar", description: "Talvez já exista na receita?", variant: "destructive" });
         } else {
-            openRecipe(selectedProduct); // Recarrega
+            openRecipe(selectedProduct);
             setNewRecipeItem({ ingredient_id: "", quantity: "" });
         }
     };
@@ -119,7 +156,7 @@ export default function Menu() {
             <h1 className="text-2xl font-bold text-gray-900">Gestão de Cardápio</h1>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* FORMULÁRIO PRODUTO */}
+                {/* FORMULÁRIO NOVO PRODUTO */}
                 <Card className="h-fit border-0 shadow-md">
                     <CardHeader className="bg-gray-50/80 border-b pb-4"><CardTitle className="text-base">Novo Item</CardTitle></CardHeader>
                     <CardContent className="space-y-4 pt-6">
@@ -140,14 +177,11 @@ export default function Menu() {
                 {/* LISTA DE PRODUTOS */}
                 <div className="lg:col-span-2 space-y-3">
                     {menuItems.map(item => {
-                        // Cálculo de Gamificação
-                        // Ganha 1 pra 1 (Regra Fixa)
                         const coinsReward = Math.floor(item.price);
-                        // Custa 20x (Regra Fixa: 1 Real = 20 Coins)
                         const coinsPrice = Math.ceil(item.price * 20);
 
                         return (
-                            <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm flex gap-4 items-center">
+                            <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm flex gap-4 items-center group">
                                 <div className="w-16 h-16 bg-gray-100 rounded-lg bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${item.image_url || '/placeholder.svg'})` }} />
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start">
@@ -157,7 +191,6 @@ export default function Menu() {
                                         </div>
                                     </div>
 
-                                    {/* SEÇÃO DE COINS (NOVA) */}
                                     <div className="flex gap-3 text-xs mt-1 mb-2">
                                         <div className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100" title="Quanto o cliente ganha ao comprar">
                                             <Coins className="w-3 h-3" />
@@ -176,12 +209,64 @@ export default function Menu() {
                                         </Button>
                                     </div>
                                 </div>
-                                <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}><Trash className="w-4 h-4 text-gray-400 hover:text-red-600" /></Button>
+                                <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-primary" onClick={() => openEditModal(item)}>
+                                        <Edit2 className="w-4 h-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-red-600" onClick={() => handleDelete(item.id)}>
+                                        <Trash className="w-4 h-4" />
+                                    </Button>
+                                </div>
                             </div>
                         )
                     })}
                 </div>
             </div>
+
+            {/* MODAL DE EDIÇÃO */}
+            <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Editar Item</DialogTitle>
+                    </DialogHeader>
+                    {editingItem && (
+                        <div className="space-y-4 py-2">
+                            <div className="flex justify-center border-2 border-dashed rounded-xl p-6 cursor-pointer hover:bg-gray-50" onClick={() => document.getElementById('prod-edit-up')?.click()}>
+                                {editingItem.image_url ? <div className="w-32 h-32 bg-cover bg-center rounded-lg" style={{ backgroundImage: `url(${editingItem.image_url})` }} /> : <div className="text-center text-gray-400"><ImageIcon className="mx-auto mb-2 w-8 h-8" /><span className="text-xs">Alterar Foto</span></div>}
+                                <input type="file" id="prod-edit-up" className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0], true)} />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Nome</label>
+                                <Input value={editingItem.name} onChange={e => setEditingItem({ ...editingItem, name: e.target.value })} />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Preço</label>
+                                    <Input type="number" value={editingItem.price} onChange={e => setEditingItem({ ...editingItem, price: e.target.value })} />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Categoria</label>
+                                    <Select value={editingItem.category} onValueChange={v => setEditingItem({ ...editingItem, category: v })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent><SelectItem value="Comida">Comida</SelectItem><SelectItem value="Bebida">Bebida</SelectItem></SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Descrição</label>
+                                <Textarea value={editingItem.description} onChange={e => setEditingItem({ ...editingItem, description: e.target.value })} />
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleUpdate} disabled={uploading} className="gap-2"><Save className="w-4 h-4" /> Salvar Alterações</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* MODAL FICHA TÉCNICA */}
             <Dialog open={isRecipeOpen} onOpenChange={setIsRecipeOpen}>

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Clock, CheckCircle2, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus, Coins, Calculator } from "lucide-react";
+import { Loader2, Clock, CheckCircle2, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus, Coins, Calculator, PackageCheck, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import OrderSheet from "@/components/OrderSheet";
 import { DispatchModal } from "@/components/DispatchModal";
@@ -16,6 +16,12 @@ type Order = {
     status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'canceled';
     order_type: 'table' | 'delivery';
     customer_name?: string;
+    // Campos de Endereço
+    address_street?: string;
+    address_number?: string;
+    address_neighborhood?: string;
+    address_complement?: string;
+
     total_amount: number;
     subtotal?: number;
     delivery_fee?: number;
@@ -73,6 +79,13 @@ export default function Orders() {
         else { toast({ title: "Atualizado!" }); fetchData(); }
     };
 
+    const cancelOrder = async (id: string) => {
+        if (!confirm("Tem certeza que deseja cancelar este pedido?")) return;
+        const { error } = await supabase.from('orders').update({ status: 'canceled' }).eq('id', id);
+        if (error) toast({ title: "Erro ao cancelar", variant: "destructive" });
+        else { toast({ title: "Pedido cancelado" }); fetchData(); }
+    };
+
     const handleCreateDelivery = async () => {
         if (!marketId || !newDelivery.name) return;
         try {
@@ -82,7 +95,9 @@ export default function Orders() {
                 status: 'pending',
                 customer_name: newDelivery.name,
                 customer_phone: newDelivery.phone,
-                delivery_address: newDelivery.address,
+                // Nota: Pedidos manuais usam um campo genérico 'delivery_address' ou mapear para street/number se possível
+                // Aqui mantemos simplificado para manual, mas o ideal seria quebrar o endereço.
+                address_street: newDelivery.address,
                 total_amount: 0
             }).select().single();
 
@@ -109,10 +124,12 @@ export default function Orders() {
         const subtotal = Number(order.subtotal || 0);
         const delivery = Number(order.delivery_fee || 0);
         const discount = Number(order.discount_amount || 0);
+        const calculatedTotal = (subtotal + delivery) - discount;
 
-        // Garante que o total exibido seja o cálculo real se o banco estiver inconsistente (fallback)
-        // Mas confiamos preferencialmente no total_amount do banco se ele foi corrigido pelo SQL
-        const total = Number(order.total_amount);
+        // Formatação do Endereço Completo
+        const fullAddress = order.order_type === 'delivery'
+            ? `${order.address_street || 'Sem rua'}, ${order.address_number || 'S/N'} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`
+            : `Mesa ${order.restaurant_tables?.table_number}`;
 
         return (
             <Card className={`mb-3 border-l-4 shadow-sm hover:shadow-md transition-all cursor-pointer ${discount > 0 ? 'border-l-green-500 bg-green-50/10' : 'border-l-primary'}`} onClick={() => openOrderSheet(order.id)}>
@@ -122,62 +139,67 @@ export default function Orders() {
                             <span className="font-bold text-lg">#{order.display_id}</span>
                             <span className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
-                        <Badge variant={order.order_type === 'delivery' ? 'secondary' : 'outline'}>
-                            {order.order_type === 'delivery' ? <Bike className="w-3 h-3 mr-1" /> : <Receipt className="w-3 h-3 mr-1" />}
-                            {order.order_type === 'delivery' ? 'Delivery' : `Mesa ${order.restaurant_tables?.table_number}`}
-                        </Badge>
+                        <div className="flex gap-2">
+                            {/* Botão de Cancelar (Só aparece se não estiver 'ready' ou 'delivered') */}
+                            {order.status !== 'ready' && order.status !== 'delivered' && (
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50"
+                                    onClick={(e) => { e.stopPropagation(); cancelOrder(order.id); }}
+                                    title="Cancelar Pedido"
+                                >
+                                    <XCircle className="w-4 h-4" />
+                                </Button>
+                            )}
+                            <Badge variant={order.order_type === 'delivery' ? 'secondary' : 'outline'}>
+                                {order.order_type === 'delivery' ? <Bike className="w-3 h-3 mr-1" /> : <Receipt className="w-3 h-3 mr-1" />}
+                                {order.order_type === 'delivery' ? 'Delivery' : 'Mesa'}
+                            </Badge>
+                        </div>
                     </div>
 
                     <div className="space-y-1 mb-3 border-b border-dashed pb-3">
-                        {order.customer_name && <p className="text-sm font-medium">{order.customer_name}</p>}
+                        <div className="mb-2">
+                            <p className="text-sm font-bold text-gray-900">{order.customer_name}</p>
+                            {/* EXIBIÇÃO DO ENDEREÇO COMPLETO */}
+                            {order.order_type === 'delivery' && (
+                                <p className="text-xs text-gray-500 flex items-start gap-1 mt-0.5">
+                                    <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
+                                    {fullAddress}
+                                </p>
+                            )}
+                        </div>
+
                         {order.order_items?.map((item, idx) => (
                             <p key={idx} className="text-sm text-gray-600"><span className="font-bold">{item.quantity}x</span> {item.name}</p>
                         ))}
+
+                        {order.courier_id && (
+                            <p className="text-xs text-blue-600 font-bold flex items-center gap-1 mt-2 bg-blue-50 p-1 rounded w-fit">
+                                <Bike className="w-3 h-3" /> {order.couriers?.name}
+                            </p>
+                        )}
                     </div>
 
                     {/* BLOCÃO FINANCEIRO */}
                     <div className="bg-gray-50 p-2 rounded-md mb-3 space-y-1 text-xs text-gray-600" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between">
-                            <span>Produtos:</span>
-                            <span>R$ {subtotal.toFixed(2)}</span>
-                        </div>
-                        {delivery > 0 && (
-                            <div className="flex justify-between">
-                                <span>Entrega:</span>
-                                <span>+ R$ {delivery.toFixed(2)}</span>
-                            </div>
-                        )}
-                        {discount > 0 && (
-                            <div className="flex justify-between text-green-700 font-bold border-t border-green-200 pt-1 mt-1">
-                                <span className="flex items-center gap-1"><Coins className="w-3 h-3" /> Desconto ({order.coins_used}):</span>
-                                <span>- R$ {discount.toFixed(2)}</span>
-                            </div>
-                        )}
+                        <div className="flex justify-between"><span>Produtos:</span><span>R$ {subtotal.toFixed(2)}</span></div>
+                        {delivery > 0 && <div className="flex justify-between"><span>Entrega:</span><span>+ R$ {delivery.toFixed(2)}</span></div>}
+                        {discount > 0 && <div className="flex justify-between text-green-700 font-bold border-t border-green-200 pt-1 mt-1"><span className="flex items-center gap-1"><Coins className="w-3 h-3" /> Desconto ({order.coins_used}):</span><span>- R$ {discount.toFixed(2)}</span></div>}
                     </div>
 
                     <div className="flex justify-between items-center pt-2 border-t mt-2" onClick={e => e.stopPropagation()}>
                         <div className="flex flex-col">
-                            <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                                <Calculator className="w-3 h-3" /> A Receber
-                            </span>
-                            <span className={`font-black text-xl ${discount > 0 ? 'text-green-700' : 'text-gray-900'}`}>
-                                R$ {total.toFixed(2)}
-                            </span>
+                            <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1"><Calculator className="w-3 h-3" /> A Receber</span>
+                            <span className={`font-black text-xl ${discount > 0 ? 'text-green-700' : 'text-gray-900'}`}>R$ {calculatedTotal.toFixed(2)}</span>
                         </div>
 
                         <div className="flex gap-2">
                             {order.status === 'pending' && <Button size="sm" onClick={() => updateStatus(order.id, 'preparing')} className="bg-blue-600 h-8"><ChefHat className="w-4 h-4 mr-1" /> Preparar</Button>}
-                            {(order.status === 'preparing' || order.status === 'confirmed') && <Button size="sm" onClick={() => updateStatus(order.id, 'ready')} className="bg-green-600 h-8"><CheckCircle2 className="w-4 h-4 mr-1" /> Pronto</Button>}
-
-                            {order.status === 'ready' && (
-                                order.order_type === 'delivery' && !order.courier_id ? (
-                                    <Button size="sm" onClick={() => setDispatchOrder(order)} className="bg-orange-500 hover:bg-orange-600 h-8">
-                                        <Send className="w-4 h-4 mr-1" /> Despachar
-                                    </Button>
-                                ) : (
-                                    <Button size="sm" onClick={() => updateStatus(order.id, 'delivered')} variant="outline" className="h-8">Concluir</Button>
-                                )
-                            )}
+                            {order.status === 'preparing' && <Button size="sm" onClick={() => updateStatus(order.id, 'confirmed')} className="bg-green-600 h-8"><PackageCheck className="w-4 h-4 mr-1" /> Pronto</Button>}
+                            {order.status === 'confirmed' && order.order_type === 'delivery' && <Button size="sm" onClick={() => setDispatchOrder(order)} className="bg-orange-500 hover:bg-orange-600 h-8"><Send className="w-4 h-4 mr-1" /> Despachar</Button>}
+                            {(order.status === 'ready' || (order.status === 'confirmed' && order.order_type === 'table')) && <Button size="sm" onClick={() => updateStatus(order.id, 'delivered')} variant="outline" className="h-8">Concluir</Button>}
                         </div>
                     </div>
                 </CardContent>
@@ -193,18 +215,18 @@ export default function Orders() {
                 <h1 className="text-2xl font-bold text-gray-900">Gestão de Pedidos</h1>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={fetchData}><Clock className="w-4 h-4 mr-2" /> Atualizar</Button>
-                    <Dialog open={isNewDeliveryOpen} onOpenChange={setIsNewDeliveryOpen}>
+                    {/* <Dialog open={isNewDeliveryOpen} onOpenChange={setIsNewDeliveryOpen}>
                         <Button onClick={() => setIsNewDeliveryOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo Pedido</Button>
                         <DialogContent>
                             <DialogHeader><DialogTitle>Novo Pedido Delivery</DialogTitle></DialogHeader>
                             <div className="space-y-4 py-4">
                                 <div className="space-y-2"><label className="text-sm font-medium flex gap-2"><User className="w-4 h-4" /> Nome do Cliente</label><Input value={newDelivery.name} onChange={e => setNewDelivery({ ...newDelivery, name: e.target.value })} placeholder="Ex: Maria Souza" /></div>
                                 <div className="space-y-2"><label className="text-sm font-medium flex gap-2"><Phone className="w-4 h-4" /> Telefone</label><Input value={newDelivery.phone} onChange={e => setNewDelivery({ ...newDelivery, phone: e.target.value })} placeholder="(11) 99999-9999" /></div>
-                                <div className="space-y-2"><label className="text-sm font-medium flex gap-2"><MapPin className="w-4 h-4" /> Endereço</label><Input value={newDelivery.address} onChange={e => setNewDelivery({ ...newDelivery, address: e.target.value })} placeholder="Rua, Número, Bairro" /></div>
+                                <div className="space-y-2"><label className="text-sm font-medium flex gap-2"><MapPin className="w-4 h-4" /> Endereço Completo</label><Input value={newDelivery.address} onChange={e => setNewDelivery({ ...newDelivery, address: e.target.value })} placeholder="Rua, Número, Bairro" /></div>
                                 <Button className="w-full" onClick={handleCreateDelivery}>Criar e Adicionar Itens</Button>
                             </div>
                         </DialogContent>
-                    </Dialog>
+                    </Dialog> */}
                 </div>
             </div>
 
@@ -214,12 +236,14 @@ export default function Orders() {
                     <div className="overflow-y-auto flex-1 pr-2 space-y-2">{orders.filter(o => o.status === 'pending').map(order => <OrderCard key={order.id} order={order} />)}</div>
                 </div>
                 <div className="flex flex-col bg-blue-50/50 p-4 rounded-xl border border-blue-100 h-full">
-                    <div className="flex items-center gap-2 mb-4"><div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" /><h2 className="font-semibold text-blue-900">Na Cozinha</h2><Badge className="ml-auto bg-white text-blue-700">{orders.filter(o => o.status === 'preparing' || o.status === 'confirmed').length}</Badge></div>
-                    <div className="overflow-y-auto flex-1 pr-2 space-y-2">{orders.filter(o => o.status === 'preparing' || o.status === 'confirmed').map(order => <OrderCard key={order.id} order={order} />)}</div>
+                    <div className="flex items-center gap-2 mb-4"><div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" /><h2 className="font-semibold text-blue-900">Na Cozinha</h2><Badge className="ml-auto bg-white text-blue-700">{orders.filter(o => o.status === 'preparing').length}</Badge></div>
+                    <div className="overflow-y-auto flex-1 pr-2 space-y-2">{orders.filter(o => o.status === 'preparing').map(order => <OrderCard key={order.id} order={order} />)}</div>
                 </div>
                 <div className="flex flex-col bg-green-50/50 p-4 rounded-xl border border-green-100 h-full">
-                    <div className="flex items-center gap-2 mb-4"><div className="w-3 h-3 rounded-full bg-green-500" /><h2 className="font-semibold text-green-900">Pronto / Despacho</h2><Badge className="ml-auto bg-white text-green-700">{orders.filter(o => o.status === 'ready').length}</Badge></div>
-                    <div className="overflow-y-auto flex-1 pr-2 space-y-2">{orders.filter(o => o.status === 'ready').map(order => <OrderCard key={order.id} order={order} />)}</div>
+                    <div className="flex items-center gap-2 mb-4"><div className="w-3 h-3 rounded-full bg-green-500" /><h2 className="font-semibold text-green-900">Pronto / Despacho</h2><Badge className="ml-auto bg-white text-green-700">{orders.filter(o => o.status === 'ready' || o.status === 'confirmed').length}</Badge></div>
+                    <div className="overflow-y-auto flex-1 pr-2 space-y-2">
+                        {orders.filter(o => o.status === 'ready' || o.status === 'confirmed').map(order => <OrderCard key={order.id} order={order} />)}
+                    </div>
                 </div>
             </div>
 

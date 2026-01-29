@@ -57,9 +57,9 @@ const App = () => (
 
               {/* Estrutura do Painel Administrativo (Dono do Restaurante) */}
               <Route path="/" element={<RestaurantLayout />}>
-                <Route index element={<Operations />} />
+                
                 <Route path="dashboard" element={<Dashboard />} />
-                <Route path="orders" element={<Orders />} />
+                <Route index element={<Orders />} />
                 <Route path="kds" element={<KDS />} />
                 <Route path="tables" element={<Tables />} />
                 <Route path="menu" element={<Menu />} />
