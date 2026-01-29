@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Bike, MapPin, CheckCircle2, Navigation, DollarSign, LogOut, Phone, Package, CreditCard, Wallet, Lock, Car, Clock, AlertTriangle, AlertCircle } from "lucide-react";
+import { Loader2, Bike, MapPin, CheckCircle2, Navigation, DollarSign, LogOut, Phone, Package, CreditCard, Wallet, Lock, Car, Clock, Star, ThumbsUp, AlertCircle, Quote } from "lucide-react"; // Adicionei Quote
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -21,6 +21,7 @@ export default function CourierApp() {
     const [loading, setLoading] = useState(false);
     const [readyOrders, setReadyOrders] = useState<any[]>([]);
     const [myDeliveries, setMyDeliveries] = useState<any[]>([]);
+    const [myReviews, setMyReviews] = useState<any[]>([]);
 
     // Modais
     const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
@@ -41,7 +42,6 @@ export default function CourierApp() {
         pending: 0,
         paid: 0
     });
-    // Lista detalhada para o extrato
     const [financialHistory, setFinancialHistory] = useState<any[]>([]);
 
     useEffect(() => {
@@ -49,11 +49,11 @@ export default function CourierApp() {
         if (savedCourier) setCourier(JSON.parse(savedCourier));
     }, [marketId]);
 
-    // --- REALTIME LISTENER CORRIGIDO ---
     useEffect(() => {
         if (courier) {
             fetchOrders();
             fetchEarnings();
+            fetchReviews();
 
             const channel = supabase.channel('courier_view')
                 .on('postgres_changes', {
@@ -61,11 +61,7 @@ export default function CourierApp() {
                     schema: 'public',
                     table: 'orders'
                 }, (payload: any) => {
-                    // 1. Detecta Cancelamento em Tempo Real
                     const newOrder = payload.new;
-                    const oldOrder = payload.old; // Disponível se REPLICA IDENTITY FULL estiver ativo
-
-                    // Verifica se o pedido era deste entregador ou estava na lista de disponíveis
                     const isMine = newOrder.courier_id === courier.id;
 
                     if (newOrder.status === 'canceled' && isMine) {
@@ -73,11 +69,9 @@ export default function CourierApp() {
                             title: "Pedido Cancelado ⚠️",
                             description: `Motivo: ${newOrder.cancellation_reason || 'Cancelado pelo estabelecimento'}`,
                             variant: "destructive",
-                            duration: 6000, // Fica mais tempo na tela
+                            duration: 6000,
                         });
                     }
-
-                    // 2. Atualiza as listas
                     fetchOrders();
                     fetchEarnings();
                 })
@@ -96,7 +90,6 @@ export default function CourierApp() {
         return () => stopTracking();
     }, [courier, myDeliveries.length]);
 
-    // --- FUNÇÃO DE FORMATAÇÃO DE ENDEREÇO ---
     const formatAddress = (order: any) => {
         if (order.address_street) {
             return `${order.address_street}, ${order.address_number || 'S/N'} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`;
@@ -188,8 +181,6 @@ export default function CourierApp() {
             .is('courier_id', null)
             .order('created_at');
 
-        // Note: Continuamos filtrando canceled aqui para remover da lista VISUALMENTE
-        // O aviso (Toast) acontece no Realtime antes dessa lista atualizar e remover o item.
         const { data: mine } = await supabase.from('orders')
             .select('*')
             .eq('market_id', marketId)
@@ -218,37 +209,35 @@ export default function CourierApp() {
 
         if (data) {
             setFinancialHistory(data);
-
-            let todaySum = 0;
-            let monthSum = 0;
-            let countToday = 0;
-            let pendingSum = 0;
-            let paidSum = 0;
+            let todaySum = 0, monthSum = 0, countToday = 0, pendingSum = 0, paidSum = 0;
 
             data.forEach(order => {
                 const fee = Number(order.delivery_fee || 0);
                 monthSum += fee;
-
                 if (order.created_at >= startOfDay) {
                     todaySum += fee;
                     countToday++;
                 }
-
-                if (order.courier_paid) {
-                    paidSum += fee;
-                } else {
-                    pendingSum += fee;
-                }
+                if (order.courier_paid) paidSum += fee;
+                else pendingSum += fee;
             });
 
-            setEarnings({
-                today: todaySum,
-                month: monthSum,
-                countToday,
-                pending: pendingSum,
-                paid: paidSum
-            });
+            setEarnings({ today: todaySum, month: monthSum, countToday, pending: pendingSum, paid: paidSum });
         }
+    };
+
+    const fetchReviews = async () => {
+        if (!courier) return;
+        // AGORA BUSCA O COMMENT TAMBÉM
+        const { data } = await supabase
+            .from('reviews')
+            .select('rating, tags, created_at, comment')
+            .eq('target_type', 'driver')
+            .eq('target_id', courier.id)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        setMyReviews(data || []);
     };
 
     const takeOrder = async (orderId: string) => {
@@ -350,6 +339,74 @@ export default function CourierApp() {
         </ScrollArea>
     );
 
+    const ReviewsList = () => {
+        const average = myReviews.length > 0
+            ? (myReviews.reduce((a, b) => a + b.rating, 0) / myReviews.length).toFixed(1)
+            : "5.0";
+
+        return (
+            <ScrollArea className="h-[calc(100vh-200px)] px-4 py-2">
+                <div className="space-y-4">
+                    <Card className="bg-gradient-to-r from-blue-600 to-blue-500 text-white border-0 shadow-lg">
+                        <CardContent className="p-6 flex items-center justify-between">
+                            <div>
+                                <p className="text-blue-100 text-sm font-medium">Sua Nota</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-4xl font-bold">{average}</span>
+                                    <div className="flex text-yellow-300">
+                                        {[...Array(5)].map((_, i) => (
+                                            <Star key={i} className={`w-4 h-4 ${i < Math.round(Number(average)) ? "fill-current" : "opacity-30"}`} />
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-3xl font-bold">{myReviews.length}</p>
+                                <p className="text-blue-100 text-xs">Avaliações</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <div className="space-y-3">
+                        <h3 className="font-bold text-gray-800 text-sm">Feedback Recente</h3>
+                        {myReviews.length === 0 && <p className="text-gray-400 text-sm text-center py-10">Nenhuma avaliação ainda.</p>}
+
+                        {myReviews.map((review, i) => (
+                            <Card key={i} className="border-0 shadow-sm bg-white">
+                                <CardContent className="p-4">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex gap-1 text-yellow-400">
+                                            {[...Array(5)].map((_, starI) => (
+                                                <Star key={starI} className={`w-3 h-3 ${starI < review.rating ? "fill-current" : "text-gray-200 fill-gray-200"}`} />
+                                            ))}
+                                        </div>
+                                        <span className="text-[10px] text-gray-400">{new Date(review.created_at).toLocaleDateString()}</span>
+                                    </div>
+
+                                    {/* EXIBIÇÃO DO COMENTÁRIO */}
+                                    {review.comment && (
+                                        <div className="mb-3 bg-gray-50 p-2 rounded text-xs text-gray-600 italic flex gap-2">
+                                            <Quote className="w-4 h-4 text-gray-300 shrink-0" />
+                                            <p>"{review.comment}"</p>
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-wrap gap-2">
+                                        {review.tags?.map((tag: string, t: number) => (
+                                            <Badge key={t} variant="secondary" className="text-[10px] bg-blue-50 text-blue-700 hover:bg-blue-50 gap-1 font-normal">
+                                                <ThumbsUp className="w-3 h-3" /> {tag}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                </div>
+            </ScrollArea>
+        );
+    };
+
     if (!courier) {
         return (
             <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
@@ -389,13 +446,15 @@ export default function CourierApp() {
 
             <Tabs defaultValue="my-list" className="w-full">
                 <div className="bg-white p-2 shadow-sm">
-                    <TabsList className="w-full grid grid-cols-2 h-12">
-                        <TabsTrigger value="my-list" className="h-10 text-base">Minhas Entregas ({myDeliveries.length})</TabsTrigger>
-                        <TabsTrigger value="pool" className="h-10 text-base">Disponíveis ({readyOrders.length})</TabsTrigger>
+                    <TabsList className="w-full grid grid-cols-3 h-12">
+                        <TabsTrigger value="my-list" className="h-10 text-xs sm:text-sm">Minhas Entregas</TabsTrigger>
+                        <TabsTrigger value="pool" className="h-10 text-xs sm:text-sm">Disponíveis ({readyOrders.length})</TabsTrigger>
+                        <TabsTrigger value="reviews" className="h-10 text-xs sm:text-sm">Avaliações</TabsTrigger>
                     </TabsList>
                 </div>
 
                 <TabsContent value="my-list" className="p-4 space-y-4 mt-0">
+                    {/* ...Conteúdo das entregas... */}
                     {myDeliveries.length > 0 && !gpsError && (
                         <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 animate-pulse">
                             <Navigation className="w-3 h-3" /> Localização ativa
@@ -481,6 +540,10 @@ export default function CourierApp() {
                             </Card>
                         )
                     })}
+                </TabsContent>
+
+                <TabsContent value="reviews" className="mt-0">
+                    <ReviewsList />
                 </TabsContent>
             </Tabs>
 

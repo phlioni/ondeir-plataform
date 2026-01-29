@@ -28,6 +28,7 @@ import Cashier from "./pages/Cashier";
 import Inventory from "./pages/Inventory";
 import Couriers from "./pages/Couriers";
 import Operations from "./pages/Operations";
+import Reviews from "./pages/Reviews";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +64,7 @@ const App = () => (
                 <Route path="kds" element={<KDS />} />
                 <Route path="tables" element={<Tables />} />
                 <Route path="menu" element={<Menu />} />
+                <Route path="reviews" element={<Reviews />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="cashier" element={<Cashier />} />
                 <Route path="couriers" element={<Couriers />} />

@@ -3,7 +3,8 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
     LayoutDashboard, ShoppingBag, UtensilsCrossed, Settings, Activity,
     LogOut, Store, Armchair, ChefHat, DollarSign, Package, Bike, Menu as MenuIcon,
-    Shield
+    Shield,
+    Star
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -28,7 +29,8 @@ export default function RestaurantLayout() {
     const baseMenuItems = [      
         { label: "Pedidos", icon: ShoppingBag, path: "/" },  
         { label: "Visão Geral", icon: LayoutDashboard, path: "/dashboard" },
-        { label: "Caixa (PDV)", icon: DollarSign, path: "/cashier" },        
+        { label: "Caixa (PDV)", icon: DollarSign, path: "/cashier" }, 
+        { label: "Avaliações", icon: Star, path: "/reviews" },       
         { label: "Entregadores", icon: Bike, path: "/couriers" },
         { label: "Mesas", icon: Armchair, path: "/tables" },
         { label: "Cardápio", icon: UtensilsCrossed, path: "/menu" },
