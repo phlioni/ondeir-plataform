@@ -16,12 +16,10 @@ type Order = {
     status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'canceled';
     order_type: 'table' | 'delivery';
     customer_name?: string;
-    // Campos de Endereço
     address_street?: string;
     address_number?: string;
     address_neighborhood?: string;
     address_complement?: string;
-
     total_amount: number;
     subtotal?: number;
     delivery_fee?: number;
@@ -97,7 +95,9 @@ export default function Orders() {
                 customer_phone: newDelivery.phone,
                 address_street: newDelivery.address,
                 total_amount: 0,
-                subtotal: 0
+                subtotal: 0, // Inicia zerado
+                discount_amount: 0, // GARANTIA: Sem desconto manual
+                coins_used: 0       // GARANTIA: Sem moedas manual
             }).select().single();
 
             if (error) throw error;
@@ -125,21 +125,15 @@ export default function Orders() {
         const totalRaw = Number(order.total_amount || 0);
 
         // --- CORREÇÃO ROBUSTA DE CÁLCULO ---
-        // Tenta pegar o subtotal. Se for 0 ou null, tentamos reconstruir a partir do total.
-        // Fórmula: Total = Subtotal + Frete - Desconto  ==>  Subtotal = Total - Frete + Desconto
         let subtotal = Number(order.subtotal);
-
         if (!subtotal && totalRaw > 0) {
             subtotal = totalRaw - delivery + discount;
         }
-
-        // Evita valores negativos por erro de arredondamento
         if (subtotal < 0) subtotal = 0;
 
-        // Recalcula o total visual para garantir consistência na tela
         const calculatedTotal = (subtotal + delivery) - discount;
 
-        // Formatação do Endereço
+        // Formatação do Endereço Completo
         const fullAddress = order.order_type === 'delivery'
             ? `${order.address_street || 'Sem rua'}, ${order.address_number || 'S/N'} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`
             : `Mesa ${order.restaurant_tables?.table_number}`;
@@ -202,7 +196,6 @@ export default function Orders() {
                     <div className="flex justify-between items-center pt-2 border-t mt-2" onClick={e => e.stopPropagation()}>
                         <div className="flex flex-col">
                             <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1"><Calculator className="w-3 h-3" /> A Receber</span>
-                            {/* Usa o calculatedTotal para garantir que a soma bata visualmente */}
                             <span className={`font-black text-xl ${discount > 0 ? 'text-green-700' : 'text-gray-900'}`}>R$ {calculatedTotal.toFixed(2)}</span>
                         </div>
 
@@ -226,7 +219,7 @@ export default function Orders() {
                 <h1 className="text-2xl font-bold text-gray-900">Gestão de Pedidos</h1>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={fetchData}><Clock className="w-4 h-4 mr-2" /> Atualizar</Button>
-                    {/* <Dialog open={isNewDeliveryOpen} onOpenChange={setIsNewDeliveryOpen}>
+                    <Dialog open={isNewDeliveryOpen} onOpenChange={setIsNewDeliveryOpen}>
                         <Button onClick={() => setIsNewDeliveryOpen(true)} className="gap-2"><Plus className="w-4 h-4" /> Novo Pedido</Button>
                         <DialogContent>
                             <DialogHeader><DialogTitle>Novo Pedido Delivery</DialogTitle></DialogHeader>
@@ -237,7 +230,7 @@ export default function Orders() {
                                 <Button className="w-full" onClick={handleCreateDelivery}>Criar e Adicionar Itens</Button>
                             </div>
                         </DialogContent>
-                    </Dialog> */}
+                    </Dialog>
                 </div>
             </div>
 

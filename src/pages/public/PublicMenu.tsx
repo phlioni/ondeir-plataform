@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
-// --- UTILITÁRIOS (GPS) ---
 function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
     const R = 6371;
     const dLat = deg2rad(lat2 - lat1);
@@ -22,7 +21,6 @@ function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number,
 }
 function deg2rad(deg: number) { return deg * (Math.PI / 180); }
 
-// --- CONFIGURAÇÃO DE STATUS ---
 const STATUS_STEPS: any = {
     pending: { label: "Enviado", step: 1, icon: Receipt, color: "text-gray-600", bg: "bg-gray-100" },
     preparing: { label: "Preparando", step: 2, icon: ChefHat, color: "text-blue-600", bg: "bg-blue-100" },
@@ -36,7 +34,6 @@ export default function PublicMenu() {
     const { id: marketId } = useParams();
     const { toast } = useToast();
 
-    // --- ESTADOS ---
     const [market, setMarket] = useState<any>(null);
     const [menu, setMenu] = useState<any[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
@@ -45,25 +42,21 @@ export default function PublicMenu() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
 
-    // GPS
     const [isLocationChecked, setIsLocationChecked] = useState(false);
     const [isWithinRange, setIsWithinRange] = useState(false);
     const [userDistance, setUserDistance] = useState<number>(0);
     const [geoError, setGeoError] = useState<string | null>(null);
 
-    // Pedido
     const [cart, setCart] = useState<any[]>([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [customer, setCustomer] = useState({ name: "", tableNumber: "" });
     const [sending, setSending] = useState(false);
 
-    // Modal de Item
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [itemQty, setItemQty] = useState(1);
     const [itemNote, setItemNote] = useState("");
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-    // Tracking
     const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
     const [trackedOrder, setTrackedOrder] = useState<any>(null);
     const [isTrackingOpen, setIsTrackingOpen] = useState(false);
@@ -73,7 +66,6 @@ export default function PublicMenu() {
         if (marketId) loadInitialData();
     }, [marketId]);
 
-    // --- REALTIME ---
     useEffect(() => {
         if (!activeOrderId) return;
         const channel = supabase.channel(`tracking_${activeOrderId}`)
@@ -94,7 +86,6 @@ export default function PublicMenu() {
         return () => { supabase.removeChannel(channel); };
     }, [activeOrderId]);
 
-    // --- GEOLOCALIZAÇÃO ---
     const checkLocation = (marketLat: number, marketLng: number) => {
         if (!navigator.geolocation) {
             setGeoError("Seu dispositivo não suporta GPS.");
@@ -202,7 +193,6 @@ export default function PublicMenu() {
         return matchesCategory && matchesSearch;
     });
 
-    // --- CHECKOUT (CORRIGIDO PARA NÃO DESCONTAR COINS) ---
     const handleCheckout = async () => {
         if (!customer.name.trim()) return toast({ title: "Informe seu nome", variant: "destructive" });
         if (!customer.tableNumber) return toast({ title: "Selecione sua mesa", variant: "destructive" });
@@ -215,9 +205,7 @@ export default function PublicMenu() {
         try {
             let orderId = activeOrderId;
 
-            // NOVO PEDIDO
             if (!orderId) {
-                // Aqui garantimos que SUBTOTAL é gravado e COINS são 0
                 const { data: order, error: orderError } = await supabase.from('orders').insert({
                     market_id: marketId,
                     table_id: table?.id,
@@ -228,8 +216,8 @@ export default function PublicMenu() {
                     total_amount: cartTotal,
                     subtotal: cartTotal,
                     delivery_fee: 0,
-                    discount_amount: 0, // CORREÇÃO: Força 0 desconto
-                    coins_used: 0       // CORREÇÃO: Força 0 coins
+                    discount_amount: 0, // GARANTIA: Sem desconto na mesa
+                    coins_used: 0       // GARANTIA: Sem moedas na mesa
                 }).select().single();
 
                 if (orderError) throw orderError;
@@ -237,7 +225,6 @@ export default function PublicMenu() {
                 if (table) await supabase.from('restaurant_tables').update({ is_occupied: true }).eq('id', table.id);
             }
 
-            // INSERIR ITENS
             const items = cart.map(item => ({
                 order_id: orderId,
                 market_id: marketId,
@@ -252,14 +239,13 @@ export default function PublicMenu() {
             const { error: itemsError } = await supabase.from('order_items').insert(items);
             if (itemsError) throw itemsError;
 
-            // ATUALIZAR TOTAL SE FOR ADIÇÃO
             if (activeOrderId && trackedOrder) {
                 const currentTotal = Number(trackedOrder.total_amount) || 0;
                 const newTotal = currentTotal + cartTotal;
 
                 await supabase.from('orders').update({
                     total_amount: newTotal,
-                    subtotal: newTotal, // Mantém subtotal igual ao total (sem frete)
+                    subtotal: newTotal,
                     discount_amount: 0, // Garante que continue 0
                     coins_used: 0,      // Garante que continue 0
                     status: 'pending',
@@ -298,8 +284,8 @@ export default function PublicMenu() {
 
     if (!market) return <div className="h-screen flex items-center justify-center">Restaurante não encontrado.</div>;
 
-    // Proteção para status desconhecido
     const currentStatusKey = trackedOrder?.status as keyof typeof STATUS_STEPS || 'pending';
+    // PROTEÇÃO CONTRA STATUS DESCONHECIDO
     const statusInfo = STATUS_STEPS[currentStatusKey] || STATUS_STEPS['pending'];
 
     const timelineSteps = [
@@ -308,7 +294,6 @@ export default function PublicMenu() {
         { key: 'ready', label: 'Pronto', desc: 'A caminho da mesa' },
     ];
 
-    // Ajuste visual para status 'confirmed' na mesa (considera como preparando/pronto)
     const currentStepIndex = currentStatusKey === 'confirmed' ? 1 : timelineSteps.findIndex(s => s.key === currentStatusKey);
 
     const sortedTables = [...availableTables].sort((a, b) => {
