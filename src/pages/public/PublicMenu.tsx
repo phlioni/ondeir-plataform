@@ -6,11 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ShoppingBag, Plus, Minus, MapPin, User, Clock, CheckCircle2, ChefHat, Receipt, Utensils, RefreshCw, AlertCircle, ChevronDown, ChevronUp, MapPinOff, Lock, Search } from "lucide-react";
+import { Loader2, ShoppingBag, Plus, Minus, MapPin, User, Clock, CheckCircle2, ChefHat, Receipt, Utensils, ChevronDown, ChevronUp, MapPinOff, Lock, Search, PackageCheck } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"; // Adicionado Dialog
-import { Textarea } from "@/components/ui/textarea"; // Adicionado Textarea
-import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 // --- UTILITÁRIOS (GPS) ---
 function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -24,9 +23,10 @@ function getDistanceFromLatLonInMeters(lat1: number, lon1: number, lat2: number,
 function deg2rad(deg: number) { return deg * (Math.PI / 180); }
 
 // --- CONFIGURAÇÃO DE STATUS ---
-const STATUS_STEPS = {
+const STATUS_STEPS: any = {
     pending: { label: "Enviado", step: 1, icon: Receipt, color: "text-gray-600", bg: "bg-gray-100" },
     preparing: { label: "Preparando", step: 2, icon: ChefHat, color: "text-blue-600", bg: "bg-blue-100" },
+    confirmed: { label: "Pronto (Cozinha)", step: 3, icon: PackageCheck, color: "text-emerald-600", bg: "bg-emerald-100" },
     ready: { label: "Saindo / Pronto", step: 3, icon: Utensils, color: "text-orange-600", bg: "bg-orange-100" },
     delivered: { label: "Entregue", step: 4, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-100" },
     canceled: { label: "Cancelado", step: 0, icon: Clock, color: "text-red-600", bg: "bg-red-100" }
@@ -43,7 +43,7 @@ export default function PublicMenu() {
     const [selectedCategory, setSelectedCategory] = useState("Todos");
     const [availableTables, setAvailableTables] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState(""); // Estado para busca
+    const [searchQuery, setSearchQuery] = useState("");
 
     // GPS
     const [isLocationChecked, setIsLocationChecked] = useState(false);
@@ -57,7 +57,7 @@ export default function PublicMenu() {
     const [customer, setCustomer] = useState({ name: "", tableNumber: "" });
     const [sending, setSending] = useState(false);
 
-    // Modal de Item (Compacto)
+    // Modal de Item
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [itemQty, setItemQty] = useState(1);
     const [itemNote, setItemNote] = useState("");
@@ -73,7 +73,7 @@ export default function PublicMenu() {
         if (marketId) loadInitialData();
     }, [marketId]);
 
-    // --- REALTIME (ATUALIZAÇÃO AO VIVO) ---
+    // --- REALTIME ---
     useEffect(() => {
         if (!activeOrderId) return;
         const channel = supabase.channel(`tracking_${activeOrderId}`)
@@ -82,19 +82,11 @@ export default function PublicMenu() {
             }, (payload: any) => {
                 const newOrder = payload.new;
                 setTrackedOrder((prev: any) => ({ ...prev, ...newOrder }));
-
-                // SE A CONTA FOI PAGA: AVISA E LIMPA
                 if (newOrder.payment_status === 'paid') {
-                    toast({
-                        title: "✅ Conta Paga!",
-                        description: "Seu pedido foi encerrado. Obrigado!",
-                        className: "bg-green-600 text-white",
-                        duration: 5000
-                    });
+                    toast({ title: "✅ Conta Paga!", description: "Seu pedido foi encerrado. Obrigado!", className: "bg-green-600 text-white", duration: 5000 });
                     setTimeout(() => handleNewOrder(), 3000);
                     return;
                 }
-
                 if (newOrder.status === 'preparing') toast({ title: "🔥 A cozinha começou o preparo!" });
                 if (newOrder.status === 'ready') toast({ title: "🍽️ Pedido pronto/saindo!" });
             })
@@ -102,7 +94,7 @@ export default function PublicMenu() {
         return () => { supabase.removeChannel(channel); };
     }, [activeOrderId]);
 
-    // --- LÓGICA DE GEOLOCALIZAÇÃO ---
+    // --- GEOLOCALIZAÇÃO ---
     const checkLocation = (marketLat: number, marketLng: number) => {
         if (!navigator.geolocation) {
             setGeoError("Seu dispositivo não suporta GPS.");
@@ -115,7 +107,6 @@ export default function PublicMenu() {
                 const userLng = position.coords.longitude;
                 const dist = getDistanceFromLatLonInMeters(userLat, userLng, marketLat, marketLng);
                 setUserDistance(Math.round(dist));
-
                 if (dist <= 100) setIsWithinRange(true);
                 else setIsWithinRange(false);
                 setIsLocationChecked(true);
@@ -129,7 +120,6 @@ export default function PublicMenu() {
         );
     };
 
-    // --- RESETAR PEDIDO (DESTROCA) ---
     const handleNewOrder = () => {
         localStorage.removeItem(`last_order_${marketId}`);
         setActiveOrderId(null);
@@ -140,18 +130,15 @@ export default function PublicMenu() {
         toast({ title: "Pronto para um novo pedido!" });
     };
 
-    // --- CARREGAMENTO INICIAL ---
     const loadInitialData = async () => {
         setLoading(true);
         try {
-            // 1. Loja
             const { data: mData } = await supabase.from('markets').select('*').eq('id', marketId).single();
             setMarket(mData);
 
             if (mData.latitude && mData.longitude) checkLocation(mData.latitude, mData.longitude);
             else { setIsWithinRange(true); setIsLocationChecked(true); }
 
-            // 2. Menu
             const { data: menuData } = await supabase.from('menu_items').select('*').eq('market_id', marketId).order('category');
             if (menuData) {
                 setMenu(menuData);
@@ -159,24 +146,14 @@ export default function PublicMenu() {
                 setCategories(["Todos", ...uniqueCats]);
             }
 
-            // 3. Mesas (Apenas livres)
-            const { data: tablesData } = await supabase.from('restaurant_tables')
-                .select('*')
-                .eq('market_id', marketId)
-                .eq('is_occupied', false) // FILTRO DE MESAS LIVRES
-                .order('table_number', { ascending: true });
-
+            const { data: tablesData } = await supabase.from('restaurant_tables').select('*').eq('market_id', marketId).eq('is_occupied', false).order('table_number', { ascending: true });
             setAvailableTables(tablesData || []);
 
-            // 4. Recuperar Pedido (E LIMPAR SE NECESSÁRIO)
             const savedOrderId = localStorage.getItem(`last_order_${marketId}`);
             if (savedOrderId) {
                 const { data: order } = await supabase.from('orders').select('*, order_items(*), restaurant_tables(table_number)').eq('id', savedOrderId).single();
-
                 if (order) {
-                    // LIMPEZA AUTOMÁTICA: Se já foi pago, cancelado ou entregue há muito tempo
                     const isFinished = ['delivered', 'canceled'].includes(order.status) || order.payment_status === 'paid';
-
                     if (isFinished) {
                         localStorage.removeItem(`last_order_${marketId}`);
                     } else {
@@ -194,7 +171,6 @@ export default function PublicMenu() {
         } catch (error) { console.error(error); } finally { setLoading(false); }
     };
 
-    // --- CARRINHO & MODAL ---
     const openAddItemModal = (item: any) => {
         setSelectedItem(item);
         setItemQty(1);
@@ -204,12 +180,7 @@ export default function PublicMenu() {
 
     const confirmAddItem = () => {
         if (!selectedItem) return;
-        setCart(prev => [...prev, {
-            ...selectedItem,
-            quantity: itemQty,
-            notes: itemNote,
-            cartId: Math.random().toString(36)
-        }]);
+        setCart(prev => [...prev, { ...selectedItem, quantity: itemQty, notes: itemNote, cartId: Math.random().toString(36) }]);
         setIsAddModalOpen(false);
         toast({ title: "Adicionado!" });
     };
@@ -218,8 +189,6 @@ export default function PublicMenu() {
         setCart(prev => prev.filter(i => i.cartId !== cartId));
     };
 
-    // --- CÁLCULO DE TOTAIS ---
-    // Total APENAS do carrinho atual (novos itens)
     const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
     const formatTableLabel = (rawName: string) => {
@@ -227,14 +196,13 @@ export default function PublicMenu() {
         return `Mesa ${cleanName}`;
     };
 
-    // Filtro de Menu
     const filteredMenu = menu.filter(item => {
         const matchesCategory = selectedCategory === "Todos" || item.category === selectedCategory;
         const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.description?.toLowerCase().includes(searchQuery.toLowerCase());
         return matchesCategory && matchesSearch;
     });
 
-    // --- CHECKOUT (CRIAR OU ATUALIZAR) ---
+    // --- CHECKOUT (CORRIGIDO PARA NÃO DESCONTAR COINS) ---
     const handleCheckout = async () => {
         if (!customer.name.trim()) return toast({ title: "Informe seu nome", variant: "destructive" });
         if (!customer.tableNumber) return toast({ title: "Selecione sua mesa", variant: "destructive" });
@@ -247,17 +215,21 @@ export default function PublicMenu() {
         try {
             let orderId = activeOrderId;
 
-            // --- CENÁRIO A: NOVO PEDIDO ---
+            // NOVO PEDIDO
             if (!orderId) {
-                // Cálculo inicial correto do total
+                // Aqui garantimos que SUBTOTAL é gravado e COINS são 0
                 const { data: order, error: orderError } = await supabase.from('orders').insert({
                     market_id: marketId,
-                    table_id: table?.id, // Usa table?.id pois se já tem orderId, table pode ser undefined aqui
+                    table_id: table?.id,
                     status: 'pending',
-                    payment_status: 'pending', // Garante visibilidade no caixa
+                    payment_status: 'pending',
                     order_type: 'table',
                     customer_name: customer.name,
-                    total_amount: cartTotal // ENVIA O TOTAL JÁ CALCULADO
+                    total_amount: cartTotal,
+                    subtotal: cartTotal,
+                    delivery_fee: 0,
+                    discount_amount: 0, // CORREÇÃO: Força 0 desconto
+                    coins_used: 0       // CORREÇÃO: Força 0 coins
                 }).select().single();
 
                 if (orderError) throw orderError;
@@ -265,7 +237,7 @@ export default function PublicMenu() {
                 if (table) await supabase.from('restaurant_tables').update({ is_occupied: true }).eq('id', table.id);
             }
 
-            // --- INSERIR ITENS ---
+            // INSERIR ITENS
             const items = cart.map(item => ({
                 order_id: orderId,
                 market_id: marketId,
@@ -274,30 +246,30 @@ export default function PublicMenu() {
                 quantity: item.quantity,
                 unit_price: item.price,
                 total_price: item.price * item.quantity,
-                notes: item.notes // Salva a observação
+                notes: item.notes
             }));
 
             const { error: itemsError } = await supabase.from('order_items').insert(items);
             if (itemsError) throw itemsError;
 
-            // --- ATUALIZAR TOTAL E STATUS (Se for adição) ---
+            // ATUALIZAR TOTAL SE FOR ADIÇÃO
             if (activeOrderId && trackedOrder) {
-                // Soma o total antigo com o novo carrinho para garantir o valor correto
                 const currentTotal = Number(trackedOrder.total_amount) || 0;
                 const newTotal = currentTotal + cartTotal;
 
                 await supabase.from('orders').update({
-                    total_amount: newTotal, // Atualiza o total
-                    status: 'pending', // Reabre para a cozinha
+                    total_amount: newTotal,
+                    subtotal: newTotal, // Mantém subtotal igual ao total (sem frete)
+                    discount_amount: 0, // Garante que continue 0
+                    coins_used: 0,      // Garante que continue 0
+                    status: 'pending',
                     payment_status: 'pending'
                 }).eq('id', orderId);
             }
 
-            // Salva estado local
             localStorage.setItem(`last_order_${marketId}`, orderId!);
             setActiveOrderId(orderId);
 
-            // Recarrega dados completos para a UI (incluindo soma feita pelo banco se houver trigger)
             const { data: updatedOrder } = await supabase.from('orders').select('*, order_items(*), restaurant_tables(table_number)').eq('id', orderId).single();
             setTrackedOrder(updatedOrder);
 
@@ -314,8 +286,6 @@ export default function PublicMenu() {
         }
     };
 
-    // --- RENDERIZAÇÃO ---
-
     if (loading || !isLocationChecked) return <div className="h-screen flex flex-col items-center justify-center bg-gray-50 gap-4 p-8 text-center"><Loader2 className="animate-spin text-primary w-12 h-12" /><p className="text-gray-500">Verificando localização...</p></div>;
 
     if (!isWithinRange) return (
@@ -328,18 +298,19 @@ export default function PublicMenu() {
 
     if (!market) return <div className="h-screen flex items-center justify-center">Restaurante não encontrado.</div>;
 
+    // Proteção para status desconhecido
     const currentStatusKey = trackedOrder?.status as keyof typeof STATUS_STEPS || 'pending';
-    const statusInfo = STATUS_STEPS[currentStatusKey];
+    const statusInfo = STATUS_STEPS[currentStatusKey] || STATUS_STEPS['pending'];
 
-    // Configuração da Timeline
     const timelineSteps = [
         { key: 'pending', label: 'Enviado', desc: 'Aguardando restaurante' },
         { key: 'preparing', label: 'Cozinha', desc: 'Sendo preparado' },
         { key: 'ready', label: 'Pronto', desc: 'A caminho da mesa' },
     ];
-    const currentStepIndex = timelineSteps.findIndex(s => s.key === currentStatusKey);
 
-    // Ordenação Numérica das Mesas
+    // Ajuste visual para status 'confirmed' na mesa (considera como preparando/pronto)
+    const currentStepIndex = currentStatusKey === 'confirmed' ? 1 : timelineSteps.findIndex(s => s.key === currentStatusKey);
+
     const sortedTables = [...availableTables].sort((a, b) => {
         const numA = parseInt(String(a.table_number).replace(/\D/g, '')) || 0;
         const numB = parseInt(String(b.table_number).replace(/\D/g, '')) || 0;
@@ -428,7 +399,6 @@ export default function PublicMenu() {
                             ))}
                         </div>
 
-                        {/* Dados de Identificação (Travados se já tem pedido) */}
                         <div className="space-y-4 pt-2">
                             <h3 className="font-bold text-gray-900 flex items-center gap-2 text-lg"><Utensils className="w-5 h-5 text-gray-500" /> Identificação</h3>
                             <div className="grid grid-cols-10 gap-4">

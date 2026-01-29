@@ -95,10 +95,9 @@ export default function Orders() {
                 status: 'pending',
                 customer_name: newDelivery.name,
                 customer_phone: newDelivery.phone,
-                // Nota: Pedidos manuais usam um campo genérico 'delivery_address' ou mapear para street/number se possível
-                // Aqui mantemos simplificado para manual, mas o ideal seria quebrar o endereço.
                 address_street: newDelivery.address,
-                total_amount: 0
+                total_amount: 0,
+                subtotal: 0
             }).select().single();
 
             if (error) throw error;
@@ -121,12 +120,26 @@ export default function Orders() {
     };
 
     const OrderCard = ({ order }: { order: Order }) => {
-        const subtotal = Number(order.subtotal || 0);
         const delivery = Number(order.delivery_fee || 0);
         const discount = Number(order.discount_amount || 0);
+        const totalRaw = Number(order.total_amount || 0);
+
+        // --- CORREÇÃO ROBUSTA DE CÁLCULO ---
+        // Tenta pegar o subtotal. Se for 0 ou null, tentamos reconstruir a partir do total.
+        // Fórmula: Total = Subtotal + Frete - Desconto  ==>  Subtotal = Total - Frete + Desconto
+        let subtotal = Number(order.subtotal);
+
+        if (!subtotal && totalRaw > 0) {
+            subtotal = totalRaw - delivery + discount;
+        }
+
+        // Evita valores negativos por erro de arredondamento
+        if (subtotal < 0) subtotal = 0;
+
+        // Recalcula o total visual para garantir consistência na tela
         const calculatedTotal = (subtotal + delivery) - discount;
 
-        // Formatação do Endereço Completo
+        // Formatação do Endereço
         const fullAddress = order.order_type === 'delivery'
             ? `${order.address_street || 'Sem rua'}, ${order.address_number || 'S/N'} - ${order.address_neighborhood || ''} ${order.address_complement ? `(${order.address_complement})` : ''}`
             : `Mesa ${order.restaurant_tables?.table_number}`;
@@ -140,7 +153,6 @@ export default function Orders() {
                             <span className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                         <div className="flex gap-2">
-                            {/* Botão de Cancelar (Só aparece se não estiver 'ready' ou 'delivered') */}
                             {order.status !== 'ready' && order.status !== 'delivered' && (
                                 <Button
                                     size="icon"
@@ -162,7 +174,6 @@ export default function Orders() {
                     <div className="space-y-1 mb-3 border-b border-dashed pb-3">
                         <div className="mb-2">
                             <p className="text-sm font-bold text-gray-900">{order.customer_name}</p>
-                            {/* EXIBIÇÃO DO ENDEREÇO COMPLETO */}
                             {order.order_type === 'delivery' && (
                                 <p className="text-xs text-gray-500 flex items-start gap-1 mt-0.5">
                                     <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
@@ -182,7 +193,6 @@ export default function Orders() {
                         )}
                     </div>
 
-                    {/* BLOCÃO FINANCEIRO */}
                     <div className="bg-gray-50 p-2 rounded-md mb-3 space-y-1 text-xs text-gray-600" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between"><span>Produtos:</span><span>R$ {subtotal.toFixed(2)}</span></div>
                         {delivery > 0 && <div className="flex justify-between"><span>Entrega:</span><span>+ R$ {delivery.toFixed(2)}</span></div>}
@@ -192,6 +202,7 @@ export default function Orders() {
                     <div className="flex justify-between items-center pt-2 border-t mt-2" onClick={e => e.stopPropagation()}>
                         <div className="flex flex-col">
                             <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1"><Calculator className="w-3 h-3" /> A Receber</span>
+                            {/* Usa o calculatedTotal para garantir que a soma bata visualmente */}
                             <span className={`font-black text-xl ${discount > 0 ? 'text-green-700' : 'text-gray-900'}`}>R$ {calculatedTotal.toFixed(2)}</span>
                         </div>
 
