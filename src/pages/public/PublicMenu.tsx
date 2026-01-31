@@ -255,7 +255,7 @@ export default function PublicMenu() {
 
     const handleRedirectToDelivery = () => {
         // Redireciona para o App principal
-        window.location.href = `http://localhost:8080/place/${marketId}`;
+        window.location.href = `https://ondeir-app.vercel.app/place/${marketId}`;
     };
 
     // --- RENDERIZAÇÃO ---

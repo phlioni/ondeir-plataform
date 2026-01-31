@@ -4,11 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
-import { Loader2, Save, Upload, Copy, ExternalLink, QrCode, Settings as SettingsIcon, Truck, DollarSign, Clock, Wallet, CalendarClock, Sparkles } from "lucide-react";
+import { Loader2, Save, Upload, Copy, ExternalLink, QrCode, Settings as SettingsIcon, Truck, DollarSign, Clock, Wallet, CalendarClock, Sparkles, Share2, Globe, Store, Check, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IntegrationsTab } from "@/components/IntegrationsTab";
 import { CoinsWallet } from "@/components/CoinsWallet";
@@ -70,17 +70,28 @@ export default function Settings() {
     const [user, setUser] = useState<any>(null);
     const [market, setMarket] = useState<any>(null);
     const [uploadingCover, setUploadingCover] = useState(false);
-    const [isGeneratingAI, setIsGeneratingAI] = useState(false); // Novo estado
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
+    // Estados para Auto-Save do Slug
+    const [isSavingSlug, setIsSavingSlug] = useState(false);
+    const [slugSaved, setSlugSaved] = useState(false);
 
     const { isLoaded } = useJsApiLoader({ id: 'google-map-s', googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_KEY || "", libraries: GOOGLE_MAPS_LIBRARIES });
 
     const [form, setForm] = useState({
         name: "", category: "", description: "", address: "", amenities: "", cover_image: "", latitude: 0, longitude: 0,
+        slug: "",
         delivery_fee: 0, delivery_time_min: 30, delivery_time_max: 45,
         opening_hours: {} as Record<string, { open: string, close: string, closed: boolean }>
     });
 
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const appBaseUrl = isLocalhost ? 'http://localhost:8080' : window.location.origin;
+
     const menuLink = market ? `${window.location.origin}/menu/${market.id}` : "";
+    const deliveryLink = market
+        ? `${appBaseUrl}/place/${form.slug || market.id}`
+        : "";
 
     useEffect(() => {
         const init = async () => {
@@ -96,6 +107,7 @@ export default function Settings() {
                     setForm({
                         name: m.name, category: m.category, description: m.description || "", address: m.address || "",
                         amenities: m.amenities?.join(", ") || "", cover_image: m.cover_image || "", latitude: m.latitude || 0, longitude: m.longitude || 0,
+                        slug: m.slug || "",
                         delivery_fee: m.delivery_fee || 0,
                         delivery_time_min: m.delivery_time_min || 30,
                         delivery_time_max: m.delivery_time_max || 45,
@@ -107,6 +119,51 @@ export default function Settings() {
         };
         init();
     }, []);
+
+    // --- AUTO-SAVE LOGIC FOR SLUG ---
+    useEffect(() => {
+        if (!market || loading) return;
+
+        // Limpa slug visualmente (regras básicas)
+        const cleanInput = form.slug.toLowerCase().trim().replace(/\s+/g, '-');
+
+        // Só salva se for diferente do que está no banco e não estiver vazio
+        if (cleanInput !== (market.slug || "") && cleanInput.length > 3) {
+
+            const timer = setTimeout(async () => {
+                setIsSavingSlug(true);
+                try {
+                    // Formata rigorosamente para o banco
+                    const dbSlug = cleanInput.normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+
+                    const { error } = await supabase
+                        .from("markets")
+                        .update({ slug: dbSlug })
+                        .eq("id", market.id);
+
+                    if (error) {
+                        if (error.message?.includes("markets_slug_unique")) {
+                            toast({ title: "Link em uso", description: "Escolha outro nome, este já existe.", variant: "destructive" });
+                        } else {
+                            throw error;
+                        }
+                    } else {
+                        // Sucesso
+                        setMarket(prev => ({ ...prev, slug: dbSlug }));
+                        setForm(prev => ({ ...prev, slug: dbSlug })); // Atualiza visualmente para o formatado
+                        setSlugSaved(true);
+                        setTimeout(() => setSlugSaved(false), 3000); // Esconde o check após 3s
+                    }
+                } catch (error) {
+                    console.error("Erro auto-save:", error);
+                } finally {
+                    setIsSavingSlug(false);
+                }
+            }, 1500); // Espera 1.5s após parar de digitar
+
+            return () => clearTimeout(timer);
+        }
+    }, [form.slug, market]);
 
     const handleUpload = async (file: File) => {
         try {
@@ -128,41 +185,42 @@ export default function Settings() {
                 name: form.name, category: form.category, description: form.description, address: form.address,
                 amenities: form.amenities.split(",").map(s => s.trim()).filter(Boolean),
                 cover_image: form.cover_image, latitude: form.latitude, longitude: form.longitude, owner_id: user.id,
+                // Slug já é salvo automaticamente, mas enviamos aqui para garantir consistência
+                slug: form.slug,
                 delivery_fee: Number(form.delivery_fee),
                 delivery_time_min: Number(form.delivery_time_min),
                 delivery_time_max: Number(form.delivery_time_max),
                 opening_hours: form.opening_hours
             };
+
             if (market) await supabase.from("markets").update(payload).eq("id", market.id);
             else await supabase.from("markets").insert(payload);
+
             toast({ title: "Configurações salvas!" });
         } catch (e: any) {
             toast({ title: "Erro", description: e.message, variant: "destructive" });
         }
     };
 
-    // --- NOVA FUNÇÃO: GERAR INTELIGÊNCIA DO LOCAL ---
     const handleGenerateMarketAI = async () => {
         if (!market?.id) return;
         setIsGeneratingAI(true);
-        toast({ title: "Analisando seu estabelecimento...", description: "A IA está lendo sua descrição para melhorar a busca." });
+        toast({ title: "Otimizando busca...", description: "A IA está lendo sua descrição." });
 
         try {
-            // Salva antes para garantir que a IA leia a versão mais recente
             await handleSave();
-
             const { error } = await supabase.functions.invoke('generate-embedding', {
                 body: {
                     id: market.id,
                     name: form.name,
                     description: form.description,
                     category: form.category,
-                    type: 'market' // Indica que é um Local, não um Produto
+                    type: 'market'
                 }
             });
 
             if (error) throw error;
-            toast({ title: "Sucesso!", description: "Agora seu local pode ser encontrado por características (ex: música ao vivo, romântico).", className: "bg-green-600 text-white" });
+            toast({ title: "Sucesso!", description: "Loja otimizada para busca com IA.", className: "bg-green-600 text-white" });
         } catch (error: any) {
             console.error(error);
             toast({ title: "Erro na IA", description: error.message, variant: "destructive" });
@@ -181,10 +239,16 @@ export default function Settings() {
         }));
     };
 
-    const copyToClipboard = () => {
-        if (!menuLink) return;
-        navigator.clipboard.writeText(menuLink);
+    const copyToClipboard = (text: string) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text);
         toast({ title: "Link copiado!", className: "bg-green-600 text-white" });
+    };
+
+    const shareOnWhatsApp = () => {
+        const text = `Olá! Peça pelo nosso App de Delivery: ${deliveryLink}`;
+        const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+        window.open(url, '_blank');
     };
 
     if (loading) return <Loader2 className="animate-spin" />;
@@ -209,21 +273,79 @@ export default function Settings() {
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 space-y-6">
+
                             <Card className="border-0 shadow-md">
                                 <CardHeader className="bg-gray-50/80 border-b pb-4"><CardTitle>Dados Gerais</CardTitle></CardHeader>
                                 <CardContent className="space-y-5 pt-6">
+
                                     {market && (
-                                        <div className="space-y-2 bg-blue-50 p-4 rounded-lg border border-blue-100">
-                                            <label className="text-sm font-bold text-blue-900 flex items-center gap-2"><QrCode className="w-4 h-4" /> Menu Digital (Link Público)</label>
-                                            <div className="flex gap-2">
-                                                <Input value={menuLink} readOnly className="bg-white text-gray-600 font-mono text-sm border-blue-200" />
-                                                <Button variant="outline" className="shrink-0 border-blue-200 hover:bg-blue-100 text-blue-700" onClick={copyToClipboard} title="Copiar Link"><Copy className="w-4 h-4" /></Button>
-                                                <Button variant="outline" className="shrink-0 border-blue-200 hover:bg-blue-100 text-blue-700" onClick={() => window.open(menuLink, '_blank')} title="Abrir"><ExternalLink className="w-4 h-4" /></Button>
+                                        <div className="space-y-4">
+                                            {/* BLOCO 1: MENU DIGITAL (MESA) - AZUL */}
+                                            <div className="space-y-2 bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                                <label className="text-sm font-bold text-blue-900 flex items-center gap-2">
+                                                    <QrCode className="w-4 h-4" /> Menu Digital (Uso Interno/Mesa)
+                                                </label>
+                                                <div className="flex gap-2">
+                                                    <Input value={menuLink} readOnly className="bg-white text-gray-600 font-mono text-xs border-blue-200" />
+                                                    <Button variant="outline" className="shrink-0 border-blue-200 hover:bg-blue-100 text-blue-700 h-9 w-9 p-0" onClick={() => copyToClipboard(menuLink)} title="Copiar"><Copy className="w-4 h-4" /></Button>
+                                                    <Button variant="outline" className="shrink-0 border-blue-200 hover:bg-blue-100 text-blue-700 h-9 w-9 p-0" onClick={() => window.open(menuLink, '_blank')} title="Abrir"><ExternalLink className="w-4 h-4" /></Button>
+                                                </div>
+                                            </div>
+
+                                            {/* BLOCO 2: LINK DE DELIVERY (DIVULGAÇÃO) - VERDE */}
+                                            <div className="space-y-4 bg-green-50 p-4 rounded-xl border border-green-100 relative overflow-hidden">
+                                                {/* Efeito visual quando salvo */}
+                                                {slugSaved && <div className="absolute top-0 right-0 left-0 h-1 bg-green-500 animate-in fade-in duration-300" />}
+
+                                                <div>
+                                                    <label className="text-sm font-bold text-green-900 flex items-center gap-2 mb-2">
+                                                        <Store className="w-4 h-4" /> Link da Loja Delivery (Divulgação)
+                                                    </label>
+
+                                                    <div className="flex gap-2 mb-3">
+                                                        <Input value={deliveryLink} readOnly className="bg-white text-gray-600 font-mono text-xs border-green-200" />
+                                                        <Button variant="outline" className="shrink-0 border-green-200 hover:bg-green-100 text-green-700 h-9 w-9 p-0" onClick={() => copyToClipboard(deliveryLink)} title="Copiar"><Copy className="w-4 h-4" /></Button>
+                                                        <Button variant="outline" className="shrink-0 border-green-200 hover:bg-green-100 text-green-700 h-9 w-9 p-0" onClick={() => window.open(deliveryLink, '_blank')} title="Abrir"><ExternalLink className="w-4 h-4" /></Button>
+                                                    </div>
+
+                                                    <Button
+                                                        className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold gap-2 shadow-sm border-0"
+                                                        onClick={shareOnWhatsApp}
+                                                    >
+                                                        <Share2 className="w-4 h-4" /> Enviar Link no WhatsApp
+                                                    </Button>
+                                                </div>
+
+                                                {/* Personalização do Link (Auto-Save) */}
+                                                <div className="pt-3 border-t border-green-200/50">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <label className="text-xs font-semibold text-green-800 flex items-center gap-1">
+                                                            <Globe className="w-3 h-3" /> Personalizar Link (Slug)
+                                                        </label>
+
+                                                        {/* Status de Salvamento */}
+                                                        {isSavingSlug && <span className="text-[10px] text-green-600 flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Salvando...</span>}
+                                                        {slugSaved && <span className="text-[10px] text-green-600 flex items-center gap-1 font-bold"><Check className="w-3 h-3" /> Salvo!</span>}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] text-gray-500 font-mono hidden sm:inline whitespace-nowrap">{appBaseUrl}/place/</span>
+                                                        <Input
+                                                            placeholder="ex: hamburgueria-do-ze"
+                                                            value={form.slug}
+                                                            onChange={(e) => setForm({ ...form, slug: e.target.value })} // Estado atualiza, useEffect salva
+                                                            className={`h-8 text-sm bg-white border-green-200 focus-visible:ring-green-500 ${slugSaved ? 'border-green-500 bg-green-50' : ''}`}
+                                                        />
+                                                    </div>
+                                                    <p className="text-[10px] text-green-600 mt-1">
+                                                        Digita que eu salvo sozinho. Crie um link fácil para o Instagram.
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
 
-                                    <div className="grid md:grid-cols-2 gap-5">
+                                    <div className="grid md:grid-cols-2 gap-5 mt-4">
                                         <div className="space-y-2"><label className="text-sm font-medium">Nome</label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
                                         <div className="space-y-2"><label className="text-sm font-medium">Categoria</label><Select value={form.category} onValueChange={v => setForm({ ...form, category: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bar">Bar</SelectItem><SelectItem value="Restaurante">Restaurante</SelectItem></SelectContent></Select></div>
                                     </div>
@@ -247,7 +369,6 @@ export default function Settings() {
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center">
                                             <label className="text-sm font-medium">Descrição (Fale sobre o ambiente, música, estilo)</label>
-                                            {/* BOTÃO DE IA PARA O LOCAL */}
                                             <Button
                                                 variant="ghost"
                                                 size="sm"

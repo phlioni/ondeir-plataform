@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, DollarSign, ShoppingBag, Users, TrendingUp, ArrowUpRight, Utensils, Clock } from "lucide-react";
+import { Loader2, DollarSign, ShoppingBag, Users, TrendingUp, ArrowUpRight, Utensils, Clock, Sparkles, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
 export default function Dashboard() {
@@ -13,7 +13,8 @@ export default function Dashboard() {
         todayOrders: 0,
         avgTicket: 0,
         occupiedTables: 0,
-        totalTables: 0
+        totalTables: 0,
+        iaSatisfaction: 0
     });
     const [topItems, setTopItems] = useState<any[]>([]);
     const [recentOrders, setRecentOrders] = useState<any[]>([]);
@@ -52,17 +53,29 @@ export default function Dashboard() {
         const occupied = tables?.filter(t => t.is_occupied).length || 0;
         const totalT = tables?.length || 0;
 
+        // 4. Satisfação IA (Baseada em sentimentos)
+        const { data: sentimentReviews } = await supabase
+            .from('reviews')
+            .select('sentiment')
+            .eq('target_id', market.id)
+            .not('sentiment', 'is', null);
+
+        let iaScore = 0;
+        if (sentimentReviews && sentimentReviews.length > 0) {
+            const positives = sentimentReviews.filter(r => r.sentiment === 'positivo').length;
+            iaScore = Math.round((positives / sentimentReviews.length) * 100);
+        }
+
         setMetrics({
             todayRevenue: revenue,
             todayOrders: count,
             avgTicket: avg,
             occupiedTables: occupied,
-            totalTables: totalT
+            totalTables: totalT,
+            iaSatisfaction: iaScore
         });
 
-        // 4. Top Itens (Mais Vendidos Hoje)
-        // Nota: Como supabase não tem group_by simples via client, pegamos os items e agrupamos no JS
-        // Para escalar, isso deveria ser uma View ou RPC no banco.
+        // 5. Top Itens (Mais Vendidos Hoje)
         const { data: items } = await supabase
             .from('order_items')
             .select('name, quantity, total_price')
@@ -83,7 +96,7 @@ export default function Dashboard() {
 
         setTopItems(sortedItems);
 
-        // 5. Atividade Recente
+        // 6. Atividade Recente
         const { data: recent } = await supabase
             .from('orders')
             .select('id, display_id, customer_name, status, total_amount, created_at, restaurant_tables(table_number)')
@@ -94,6 +107,16 @@ export default function Dashboard() {
         setRecentOrders(recent || []);
         setLoading(false);
     };
+
+    // --- FUNÇÃO DE BENCHMARK DO ÍNDICE DE SATISFAÇÃO ---
+    const getSatisfactionLevel = (score: number) => {
+        if (score >= 90) return { label: "Excelente", color: "text-green-600", bg: "bg-green-50", icon: CheckCircle2, desc: "Acima da média do setor." };
+        if (score >= 70) return { label: "Bom", color: "text-blue-600", bg: "bg-blue-50", icon: Sparkles, desc: "Clientes satisfeitos." };
+        if (score >= 50) return { label: "Regular", color: "text-orange-600", bg: "bg-orange-50", icon: AlertTriangle, desc: "Atenção necessária." };
+        return { label: "Crítico", color: "text-red-600", bg: "bg-red-50", icon: XCircle, desc: "Risco alto de perda." };
+    };
+
+    const level = getSatisfactionLevel(metrics.iaSatisfaction);
 
     if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin text-primary w-10 h-10" /></div>;
 
@@ -120,7 +143,7 @@ export default function Dashboard() {
                         <CardTitle className="text-3xl font-bold text-gray-900">R$ {metrics.todayRevenue.toFixed(2)}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p className="text-xs text-green-600 flex items-center font-medium">+100% vs ontem (exemplo)</p>
+                        <p className="text-xs text-gray-500 font-medium">Receita bruta do dia</p>
                     </CardContent>
                 </Card>
 
@@ -132,19 +155,27 @@ export default function Dashboard() {
                         <CardTitle className="text-3xl font-bold text-gray-900">{metrics.todayOrders}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p className="text-xs text-gray-500">Volume de vendas do dia</p>
+                        <p className="text-xs text-gray-500">Volume total de vendas</p>
                     </CardContent>
                 </Card>
 
-                <Card className="border-l-4 border-l-purple-500 shadow-sm hover:shadow-md transition-all">
+                {/* CARD DE SATISFAÇÃO COM BENCHMARK */}
+                <Card className="border-l-4 border-l-purple-500 shadow-sm bg-gradient-to-br from-purple-50/50 to-white hover:shadow-md transition-all">
                     <CardHeader className="pb-2">
-                        <CardDescription className="flex items-center gap-2 font-medium">
-                            <TrendingUp className="w-4 h-4 text-purple-600" /> Ticket Médio
-                        </CardDescription>
-                        <CardTitle className="text-3xl font-bold text-gray-900">R$ {metrics.avgTicket.toFixed(2)}</CardTitle>
+                        <div className="flex justify-between items-start">
+                            <CardDescription className="flex items-center gap-2 font-bold text-purple-700">
+                                <Sparkles className="w-4 h-4" /> Satisfação IA
+                            </CardDescription>
+                            <Badge className={`${level.bg} ${level.color} border-none text-[10px]`}>{level.label}</Badge>
+                        </div>
+                        <CardTitle className="text-3xl font-bold text-gray-900">{metrics.iaSatisfaction}%</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p className="text-xs text-gray-500">Média de gasto por pedido</p>
+                        <Progress value={metrics.iaSatisfaction} className="h-2 bg-purple-100 mb-2" />
+                        <div className="flex items-start gap-1.5 mt-2">
+                            <level.icon className={`w-3.5 h-3.5 ${level.color} shrink-0 mt-0.5`} />
+                            <p className="text-[10px] text-gray-500 leading-tight">{level.desc}</p>
+                        </div>
                     </CardContent>
                 </Card>
 
