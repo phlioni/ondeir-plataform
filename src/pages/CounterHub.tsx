@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, ChefHat, Bike, Receipt, CheckCircle2, DollarSign, Clock, MapPin, User, XCircle, AlertTriangle, Send, PackageCheck, Plus, Store, CreditCard, Banknote, Wallet } from "lucide-react";
+import { Loader2, ChefHat, Bike, Receipt, CheckCircle2, DollarSign, Clock, MapPin, User, XCircle, AlertTriangle, Send, PackageCheck, Plus, Store, CreditCard, Banknote, Wallet, StickyNote, Volume2, VolumeX } from "lucide-react";
 import { DispatchModal } from "@/components/DispatchModal";
 import OrderSheet from "@/components/OrderSheet";
 
@@ -36,6 +36,10 @@ type Order = {
     courier_id?: string;
 };
 
+// URL do som de telefone antigo (Hospedado externamente para garantir que toque)
+// Você pode substituir por um arquivo local em /public/sounds/ring.mp3 depois
+const ALERT_SOUND_URL = "https://cdn.freesound.org/previews/337/337049_3232293-lq.mp3";
+
 export default function CounterHub() {
     const { toast } = useToast();
     const [loading, setLoading] = useState(true);
@@ -47,13 +51,18 @@ export default function CounterHub() {
     const [prepOrders, setPrepOrders] = useState<Order[]>([]);
     const [routeOrders, setRouteOrders] = useState<Order[]>([]);
 
+    // Controle de Áudio
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const [isSoundEnabled, setIsSoundEnabled] = useState(false); // Estado para controlar permissão do navegador
+    const [isPlaying, setIsPlaying] = useState(false);
+
     // Modais Operacionais
     const [dispatchOrder, setDispatchOrder] = useState<Order | null>(null);
 
     // Estado do Modal de Pagamento
     const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<Order | null>(null);
     const [paymentMethod, setPaymentMethod] = useState("credit");
-    const [changeFor, setChangeFor] = useState(""); // Novo: Valor entregue para troco
+    const [changeFor, setChangeFor] = useState("");
 
     // Modal de Cancelamento
     const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
@@ -72,9 +81,57 @@ export default function CounterHub() {
         address: ""
     });
 
-    // OrderSheet (Adicionar Itens)
+    // OrderSheet
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [sheetOrderId, setSheetOrderId] = useState<string | undefined>(undefined);
+
+    // --- INICIALIZAÇÃO DO ÁUDIO ---
+    useEffect(() => {
+        audioRef.current = new Audio(ALERT_SOUND_URL);
+        audioRef.current.loop = true; // Loop infinito até alguém atender
+
+        // Tenta habilitar áudio na primeira interação
+        const enableAudio = () => {
+            setIsSoundEnabled(true);
+            window.removeEventListener('click', enableAudio);
+            window.removeEventListener('keydown', enableAudio);
+        };
+        window.addEventListener('click', enableAudio);
+        window.addEventListener('keydown', enableAudio);
+
+        return () => {
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current = null;
+            }
+            window.removeEventListener('click', enableAudio);
+            window.removeEventListener('keydown', enableAudio);
+        };
+    }, []);
+
+    // --- CONTROLE DE TOCAR/PARAR O SOM ---
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        // Regra: Toca se tiver pedidos em 'entryOrders' (Pendente) e o som estiver habilitado
+        const shouldPlay = entryOrders.length > 0;
+
+        if (shouldPlay && !isPlaying) {
+            // Tenta tocar
+            audio.play().then(() => {
+                setIsPlaying(true);
+            }).catch((err) => {
+                console.warn("Autoplay bloqueado pelo navegador:", err);
+                setIsPlaying(false); // Mantém false para mostrar botão de ativar som se precisar
+            });
+        } else if (!shouldPlay && isPlaying) {
+            // Para de tocar
+            audio.pause();
+            audio.currentTime = 0;
+            setIsPlaying(false);
+        }
+    }, [entryOrders, isPlaying]); // Reage a mudanças na lista de entrada
 
     useEffect(() => {
         const init = async () => {
@@ -168,7 +225,7 @@ export default function CounterHub() {
     const handlePaymentClick = (order: Order) => {
         setSelectedPaymentOrder(order);
         setPaymentMethod("credit");
-        setChangeFor(""); // Reset do troco
+        setChangeFor("");
     };
 
     const confirmPayment = async () => {
@@ -275,11 +332,15 @@ export default function CounterHub() {
 
     const formatAddress = (order: Order) => {
         if (order.order_type !== 'delivery') return `Mesa ${order.restaurant_tables?.table_number || 'Balcão'}`;
-        if (order.address_street) return `${order.address_street}, ${order.address_number || 'S/N'}`;
-        return "Retirada";
+
+        let fullAddress = order.address_street || "";
+        if (order.address_number) fullAddress += `, ${order.address_number}`;
+        if (order.address_neighborhood) fullAddress += ` - ${order.address_neighborhood}`;
+        if (order.address_complement) fullAddress += ` (${order.address_complement})`;
+
+        return fullAddress || "Retirada no Local";
     };
 
-    // Tradutor simples de método de pagamento
     const translatePayment = (method?: string) => {
         switch (method) {
             case 'credit': return 'Crédito';
@@ -307,11 +368,11 @@ export default function CounterHub() {
                 <p className="font-semibold text-sm truncate flex items-center gap-1">
                     <User className="w-3 h-3 text-gray-400" /> {order.customer_name || "Cliente"}
                 </p>
-                <p className="text-xs text-gray-500 truncate flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-gray-400" /> {formatAddress(order)}
+                <p className="text-xs text-gray-500 flex items-start gap-1 leading-snug">
+                    <MapPin className="w-3 h-3 text-gray-400 mt-0.5 shrink-0" />
+                    <span>{formatAddress(order)}</span>
                 </p>
 
-                {/* Exibição da Forma de Pagamento no Card */}
                 {order.payment_method && (
                     <div className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded w-fit mt-1">
                         <Wallet className="w-3 h-3" />
@@ -319,13 +380,23 @@ export default function CounterHub() {
                     </div>
                 )}
 
-                <div className="bg-gray-50 rounded p-1.5 mt-2 space-y-1 min-h-[40px]">
+                <div className="bg-gray-50 rounded p-1.5 mt-2 space-y-2 min-h-[40px]">
                     {order.order_items && order.order_items.length > 0 ? (
                         <>
-                            {order.order_items.slice(0, 3).map((item, i) => (
-                                <div key={i} className="flex justify-between text-xs text-gray-700"><span><span className="font-bold">{item.quantity}x</span> {item.name}</span></div>
+                            {order.order_items.slice(0, 4).map((item, i) => (
+                                <div key={i} className="flex flex-col border-b border-gray-100 last:border-0 pb-1 last:pb-0">
+                                    <div className="flex justify-between text-xs text-gray-700">
+                                        <span><span className="font-bold">{item.quantity}x</span> {item.name}</span>
+                                    </div>
+                                    {item.notes && (
+                                        <div className="text-[10px] text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100 w-fit mt-0.5 flex items-center gap-1">
+                                            <StickyNote className="w-3 h-3" />
+                                            <span className="italic font-medium">{item.notes}</span>
+                                        </div>
+                                    )}
+                                </div>
                             ))}
-                            {order.order_items.length > 3 && <span className="text-[10px] text-gray-400 block pt-1">...mais {order.order_items.length - 3} itens</span>}
+                            {order.order_items.length > 4 && <span className="text-[10px] text-gray-400 block pt-1">...mais {order.order_items.length - 4} itens</span>}
                         </>
                     ) : <span className="text-[10px] text-gray-400 block pt-1 italic text-center">Nenhum item adicionado</span>}
                 </div>
@@ -361,7 +432,16 @@ export default function CounterHub() {
                     <div className="bg-purple-100 p-2 rounded-lg"><CheckCircle2 className="text-purple-600 w-6 h-6" /></div>
                     <div><h1 className="text-xl font-bold text-gray-900">Visão Balcão</h1><p className="text-xs text-gray-500">Fluxo: Entrada → Preparo → Despacho</p></div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+
+                    {/* INDICADOR DE ÁUDIO - SÓ APARECE SE ESTIVER TOCANDO OU BLOQUEADO */}
+                    {entryOrders.length > 0 && (
+                        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-colors ${isPlaying ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-500'}`}>
+                            {isPlaying ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                            {isPlaying ? "Chamando..." : "Som Desativado"}
+                        </div>
+                    )}
+
                     <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => setIsNewOrderOpen(true)}><Plus className="w-4 h-4" /> Novo Pedido</Button>
                     <Button variant="outline" size="icon" onClick={() => marketId && fetchOrders(marketId)} title="Atualizar"><Clock className="w-4 h-4" /></Button>
                 </div>
@@ -369,9 +449,14 @@ export default function CounterHub() {
 
             {/* Grid Kanban */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 min-h-0">
-                <Card className="flex flex-col bg-gray-50/50 border-dashed border-gray-300 h-full">
-                    <CardHeader className="pb-2 py-3 bg-gray-100/50 rounded-t-lg"><CardTitle className="text-sm font-bold flex items-center gap-2 text-gray-700 uppercase"><div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" /> Entrada ({entryOrders.length})</CardTitle></CardHeader>
-                    <CardContent className="flex-1 min-h-0 p-2 bg-gray-50/30"><ScrollArea className="h-full pr-3"><div className="space-y-3">{entryOrders.map(order => <OrderCard key={order.id} order={order} secondaryButton={<Button size="sm" variant="outline" className="h-8 w-8 p-0 text-red-500 border-red-200 hover:bg-red-50" onClick={() => handleReject(order.id)} title="Recusar"><XCircle className="w-4 h-4" /></Button>} actionButton={<Button size="sm" className="bg-blue-600 h-8 text-xs w-24" onClick={() => updateStatus(order.id, 'preparing')}>Aceitar</Button>} />)}{entryOrders.length === 0 && <div className="text-center text-gray-400 text-xs py-10">Sem novos pedidos.</div>}</div></ScrollArea></CardContent>
+                <Card className={`flex flex-col border-dashed h-full transition-colors ${entryOrders.length > 0 ? 'bg-red-50/50 border-red-300' : 'bg-gray-50/50 border-gray-300'}`}>
+                    <CardHeader className="pb-2 py-3 bg-gray-100/50 rounded-t-lg">
+                        <CardTitle className={`text-sm font-bold flex items-center gap-2 uppercase ${entryOrders.length > 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                            <div className={`w-2 h-2 rounded-full ${entryOrders.length > 0 ? 'bg-red-500 animate-ping' : 'bg-gray-400'}`} />
+                            Entrada ({entryOrders.length})
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-1 min-h-0 p-2 bg-gray-50/30"><ScrollArea className="h-full pr-3"><div className="space-y-3">{entryOrders.map(order => <OrderCard key={order.id} order={order} secondaryButton={<Button size="sm" variant="outline" className="h-8 w-8 p-0 text-red-500 border-red-200 hover:bg-red-50" onClick={() => handleReject(order.id)} title="Recusar"><XCircle className="w-4 h-4" /></Button>} actionButton={<Button size="sm" className="bg-blue-600 h-8 text-xs w-24 animate-pulse" onClick={() => updateStatus(order.id, 'preparing')}>Aceitar</Button>} />)}{entryOrders.length === 0 && <div className="text-center text-gray-400 text-xs py-10">Sem novos pedidos.</div>}</div></ScrollArea></CardContent>
                 </Card>
 
                 <Card className="flex flex-col bg-orange-50/30 border-orange-100 h-full">

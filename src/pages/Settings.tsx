@@ -86,7 +86,7 @@ export default function Settings() {
     });
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const appBaseUrl = isLocalhost ? 'http://localhost:8080' : window.location.origin;
+    const appBaseUrl = isLocalhost ? 'http://localhost:8080' : 'https://ondeir-app.vercel.app';
 
     const menuLink = market ? `${window.location.origin}/menu/${market.id}` : "";
     const deliveryLink = market
