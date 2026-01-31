@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Plus, Trash, Image as ImageIcon, ScrollText, X, Coins, Edit2, Save, Sparkles } from "lucide-react";
+import { Loader2, Plus, Trash, Image as ImageIcon, ScrollText, X, Coins, Edit2, Save, Sparkles, RefreshCw, AlertCircle } from "lucide-react";
 
 export default function Menu() {
     const { toast } = useToast();
@@ -20,6 +20,7 @@ export default function Menu() {
     const [newItem, setNewItem] = useState({ name: "", price: "", description: "", category: "Comida", image_url: "" });
     const [uploading, setUploading] = useState(false);
     const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+    const [isSyncingAi, setIsSyncingAi] = useState(false);
 
     // Edição de Produto
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -47,7 +48,13 @@ export default function Menu() {
     }, []);
 
     const fetchMenu = async (id: string) => {
-        const { data } = await supabase.from("menu_items").select("*").eq("market_id", id).order("created_at", { ascending: false });
+        // Trazemos a coluna embedding para saber quais produtos estão "sem cérebro" (null)
+        const { data } = await supabase
+            .from("menu_items")
+            .select("*, embedding")
+            .eq("market_id", id)
+            .order("created_at", { ascending: false });
+
         setMenuItems(data || []);
     };
 
@@ -56,12 +63,66 @@ export default function Menu() {
         setIngredients(data || []);
     };
 
-    // --- LÓGICA DE UPLOAD (Genérica para Novo e Edit) ---
+    // --- FUNÇÃO AUXILIAR: GERA EMBEDDING PARA 1 ITEM ---
+    const generateEmbeddingForItem = async (item: any) => {
+        try {
+            console.log(`Gerando IA para: ${item.name}`);
+            const { error } = await supabase.functions.invoke('generate-embedding', {
+                body: {
+                    id: item.id,
+                    name: item.name,
+                    description: item.description
+                }
+            });
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.error("Falha ao gerar embedding:", e);
+            return false;
+        }
+    };
+
+    // --- SINCRONIZAR IA (APENAS PENDENTES) ---
+    const handleSyncAI = async () => {
+        if (!menuItems.length) return;
+
+        // Filtra apenas quem NÃO tem embedding (null)
+        const pendingItems = menuItems.filter(item => !item.embedding);
+
+        if (pendingItems.length === 0) {
+            toast({ title: "Tudo atualizado!", description: "Todos os seus produtos já possuem inteligência.", className: "bg-blue-600 text-white" });
+            return;
+        }
+
+        const confirmSync = confirm(`Você tem ${pendingItems.length} produtos sem inteligência de busca. Deseja corrigir isso agora?`);
+        if (!confirmSync) return;
+
+        setIsSyncingAi(true);
+        toast({ title: "Otimizando Busca...", description: "Isso acontece em segundo plano." });
+
+        let successCount = 0;
+
+        // Processa um por um para evitar erro de rate limit
+        for (const item of pendingItems) {
+            const success = await generateEmbeddingForItem(item);
+            if (success) successCount++;
+        }
+
+        toast({
+            title: "Processo Finalizado",
+            description: `${successCount}/${pendingItems.length} itens otimizados com sucesso.`,
+            className: successCount > 0 ? "bg-green-600 text-white" : "bg-red-600 text-white"
+        });
+
+        if (marketId) fetchMenu(marketId); // Recarrega para atualizar status
+        setIsSyncingAi(false);
+    };
+
+    // --- LÓGICA DE UPLOAD ---
     const handleUpload = async (file: File, isEdit = false) => {
         setUploading(true);
         try {
             const fileName = `menu/${Math.random()}.${file.name.split('.').pop()}`;
-            // Certifique-se que o bucket 'images' existe e é público no Supabase Storage
             await supabase.storage.from('images').upload(fileName, file);
             const { data } = supabase.storage.from('images').getPublicUrl(fileName);
 
@@ -73,7 +134,7 @@ export default function Menu() {
         } catch (e) { toast({ title: "Erro upload", variant: "destructive" }); } finally { setUploading(false); }
     };
 
-    // --- LÓGICA DE IA (MAGIC MENU) ---
+    // --- LÓGICA DE IA (MAGIC MENU - DESCRIÇÃO) ---
     const handleGenerateDescription = async (isEdit = false) => {
         const targetName = isEdit ? editingItem?.name : newItem.name;
         const targetCategory = isEdit ? editingItem?.category : newItem.category;
@@ -87,11 +148,7 @@ export default function Menu() {
         setIsGeneratingAi(true);
         try {
             const { data, error } = await supabase.functions.invoke('generate-description', {
-                body: {
-                    name: targetName,
-                    category: targetCategory,
-                    image_url: targetImage // Enviando a imagem para a IA ver
-                }
+                body: { name: targetName, category: targetCategory, image_url: targetImage }
             });
 
             if (error) throw error;
@@ -106,7 +163,7 @@ export default function Menu() {
             }
         } catch (error) {
             console.error(error);
-            toast({ title: "Erro ao gerar descrição", description: "Verifique se a função está publicada.", variant: "destructive" });
+            toast({ title: "Erro ao gerar descrição", description: "Verifique sua chave OpenAI.", variant: "destructive" });
         } finally {
             setIsGeneratingAi(false);
         }
@@ -114,25 +171,37 @@ export default function Menu() {
 
     const handleAdd = async () => {
         if (!marketId || !newItem.name) return;
-        const { error } = await supabase.from("menu_items").insert({
-            market_id: marketId, name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), category: newItem.category, image_url: newItem.image_url
-        });
-        if (!error) {
+
+        // 1. Insere o item
+        const { data, error } = await supabase.from("menu_items").insert({
+            market_id: marketId,
+            name: newItem.name,
+            description: newItem.description,
+            price: parseFloat(newItem.price),
+            category: newItem.category,
+            image_url: newItem.image_url
+        }).select().single();
+
+        if (!error && data) {
             setNewItem({ name: "", price: "", description: "", category: "Comida", image_url: "" });
-            if (marketId) fetchMenu(marketId);
             toast({ title: "Item adicionado!" });
+
+            // 2. Atualiza lista local
+            setMenuItems(prev => [data, ...prev]);
+
+            // 3. AUTO-SYNC: Gera embedding APENAS para este item novo (silenciosamente)
+            generateEmbeddingForItem(data);
         }
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm("Tem certeza que deseja excluir este item?")) return;
         await supabase.from("menu_items").delete().eq("id", id);
-        if (marketId) fetchMenu(marketId);
+        setMenuItems(prev => prev.filter(i => i.id !== id));
     };
 
-    // --- NOVA LÓGICA: EDIÇÃO ---
     const openEditModal = (item: any) => {
-        setEditingItem({ ...item }); // Clona o objeto para edição
+        setEditingItem({ ...item });
         setIsEditOpen(true);
     };
 
@@ -150,12 +219,16 @@ export default function Menu() {
         if (!error) {
             toast({ title: "Item atualizado!" });
             setIsEditOpen(false);
-            if (marketId) fetchMenu(marketId);
+
+            // Atualiza lista local
+            setMenuItems(prev => prev.map(i => i.id === editingItem.id ? editingItem : i));
+
+            // AUTO-SYNC: Regenera embedding APENAS para este item editado
+            generateEmbeddingForItem(editingItem);
         } else {
             toast({ title: "Erro ao atualizar", variant: "destructive" });
         }
     };
-
 
     // --- LÓGICA: FICHA TÉCNICA ---
     const openRecipe = async (product: any) => {
@@ -170,13 +243,11 @@ export default function Menu() {
 
     const addIngredientToRecipe = async () => {
         if (!selectedProduct || !newRecipeItem.ingredient_id || !newRecipeItem.quantity) return;
-
         const { error } = await supabase.from("product_recipes").insert({
             menu_item_id: selectedProduct.id,
             ingredient_id: newRecipeItem.ingredient_id,
             quantity_needed: parseFloat(newRecipeItem.quantity)
         });
-
         if (error) {
             toast({ title: "Erro ao adicionar", description: "Talvez já exista na receita?", variant: "destructive" });
         } else {
@@ -192,9 +263,27 @@ export default function Menu() {
 
     if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-primary" /></div>;
 
+    // Calcula quantos itens precisam de sync para mostrar alerta visual
+    const pendingCount = menuItems.filter(i => !i.embedding).length;
+
     return (
         <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500">
-            <h1 className="text-2xl font-bold text-gray-900">Gestão de Cardápio</h1>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="space-y-1">
+                    <h1 className="text-2xl font-bold text-gray-900">Gestão de Cardápio</h1>
+                    <p className="text-gray-500 text-sm">Gerencie produtos e fichas técnicas.</p>
+                </div>
+
+                <Button
+                    variant={pendingCount > 0 ? "default" : "outline"}
+                    onClick={handleSyncAI}
+                    disabled={isSyncingAi}
+                    className={`gap-2 ${pendingCount > 0 ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'text-purple-600 border-purple-200 hover:bg-purple-50'}`}
+                >
+                    {isSyncingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : pendingCount > 0 ? <AlertCircle className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+                    {isSyncingAi ? "Processando..." : pendingCount > 0 ? `Corrigir ${pendingCount} itens` : "Sincronizar IA"}
+                </Button>
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* FORMULÁRIO NOVO PRODUTO */}
@@ -240,7 +329,10 @@ export default function Menu() {
                         const coinsPrice = Math.ceil(item.price * 20);
 
                         return (
-                            <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm flex gap-4 items-center group">
+                            <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm flex gap-4 items-center group relative">
+                                {!item.embedding && (
+                                    <div className="absolute top-2 left-2 w-2 h-2 bg-orange-500 rounded-full animate-pulse" title="Aguardando inteligência artificial..." />
+                                )}
                                 <div className="w-16 h-16 bg-gray-100 rounded-lg bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${item.image_url || '/placeholder.svg'})` }} />
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start">
