@@ -29,6 +29,7 @@ import Inventory from "./pages/Inventory";
 import Couriers from "./pages/Couriers";
 import Operations from "./pages/Operations";
 import Reviews from "./pages/Reviews";
+import CounterHub from "./pages/CounterHub";
 
 const queryClient = new QueryClient();
 
@@ -43,7 +44,7 @@ const App = () => (
           <Routes>
             {/* --- ROTAS PÚBLICAS (Acessíveis sem login) --- */}
             <Route path="/auth" element={<Auth />} />
-            
+
             <Route path="/place/:id" element={<VenueDetail />} />
 
             {/* Menu e Tracking são públicos para o cliente final */}
@@ -58,15 +59,16 @@ const App = () => (
 
               {/* Estrutura do Painel Administrativo (Dono do Restaurante) */}
               <Route path="/" element={<RestaurantLayout />}>
-                
+
                 <Route path="dashboard" element={<Dashboard />} />
-                <Route index element={<Orders />} />
+                {/* <Route index element={<Orders />} /> */}
                 <Route path="kds" element={<KDS />} />
-                <Route path="tables" element={<Tables />} />
+                {/* <Route path="tables" element={<Tables />} /> */}
                 <Route path="menu" element={<Menu />} />
+                <Route index element={<CounterHub />} />
                 <Route path="reviews" element={<Reviews />} />
                 <Route path="settings" element={<Settings />} />
-                <Route path="cashier" element={<Cashier />} />
+                {/* <Route path="cashier" element={<Cashier />} /> */}
                 <Route path="couriers" element={<Couriers />} />
                 <Route path="inventory" element={<Inventory />} />
                 <Route path="/access-control" element={<AccessControl />} />

@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
-    LayoutDashboard, ShoppingBag, UtensilsCrossed, Settings, Activity,
-    LogOut, Store, Armchair, ChefHat, DollarSign, Package, Bike, Menu as MenuIcon,
-    Shield,
-    Star
+    LayoutDashboard, ShoppingBag, UtensilsCrossed, Settings,
+    LogOut, Store, Armchair, DollarSign, Bike, Menu as MenuIcon,
+    Shield, Star, MonitorPlay
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -26,13 +25,16 @@ export default function RestaurantLayout() {
     }, []);
 
     // Definição dos itens de menu
-    const baseMenuItems = [      
-        { label: "Pedidos", icon: ShoppingBag, path: "/" },  
+    const baseMenuItems = [
+        // Novo item adicionado com destaque
+        { label: "Visão Balcão", icon: MonitorPlay, path: "/" },
+
+        // { label: "Pedidos", icon: ShoppingBag, path: "/" },
         { label: "Visão Geral", icon: LayoutDashboard, path: "/dashboard" },
-        { label: "Caixa (PDV)", icon: DollarSign, path: "/cashier" }, 
-        { label: "Avaliações", icon: Star, path: "/reviews" },       
+        // { label: "Caixa (PDV)", icon: DollarSign, path: "/cashier" },
+        { label: "Avaliações", icon: Star, path: "/reviews" },
         { label: "Entregadores", icon: Bike, path: "/couriers" },
-        { label: "Mesas", icon: Armchair, path: "/tables" },
+        // { label: "Mesas", icon: Armchair, path: "/tables" },
         { label: "Cardápio", icon: UtensilsCrossed, path: "/menu" },
         { label: "Configurações", icon: Settings, path: "/settings" },
     ];
@@ -59,18 +61,23 @@ export default function RestaurantLayout() {
             <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
                 {menuItems.map((item) => {
                     const isActive = location.pathname === item.path;
+                    // Destaque visual extra para a Visão Balcão
+                    const isCounter = item.path === "/counter";
+
                     return (
                         <Button
                             key={item.path}
                             variant={isActive ? "secondary" : "ghost"}
-                            className={`w-full justify-start gap-3 h-12 font-medium ${isActive ? "bg-primary/10 text-primary hover:bg-primary/20" : "text-gray-500 hover:text-gray-900"
-                                }`}
+                            className={`w-full justify-start gap-3 h-12 font-medium 
+                                ${isActive ? "bg-primary/10 text-primary hover:bg-primary/20" : "text-gray-500 hover:text-gray-900"}
+                                ${isCounter && !isActive ? "text-blue-600 bg-blue-50 hover:bg-blue-100" : ""}
+                            `}
                             onClick={() => {
                                 navigate(item.path);
                                 setOpen(false);
                             }}
                         >
-                            <item.icon className={`w-5 h-5 ${isActive ? "text-primary" : "text-gray-400"}`} />
+                            <item.icon className={`w-5 h-5 ${isActive ? "text-primary" : isCounter ? "text-blue-600" : "text-gray-400"}`} />
                             {item.label}
                         </Button>
                     );

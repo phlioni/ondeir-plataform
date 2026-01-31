@@ -12,13 +12,15 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus, Minus, ShoppingBasket, Send, Search, ArrowLeft, User, ChefHat, Trash2 } from "lucide-react";
 
 interface OrderSheetProps {
-    table: any;
+    table?: any; // Agora opcional
+    orderId?: string; // Novo: Para abrir pedido específico
+    marketId?: string; // Novo: Obrigatório se não tiver mesa
     isOpen: boolean;
     onClose: () => void;
     onOrderSent: () => void;
 }
 
-export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: OrderSheetProps) {
+export default function OrderSheet({ table, orderId, marketId, isOpen, onClose, onOrderSent }: OrderSheetProps) {
     const { toast } = useToast();
     const [menuItems, setMenuItems] = useState<any[]>([]);
     const [cart, setCart] = useState<any[]>([]);
@@ -34,31 +36,48 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
     const [itemQty, setItemQty] = useState(1);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
+    // Determina o ID do Market (vem da mesa ou da prop direta)
+    const currentMarketId = table?.market_id || marketId;
+
     useEffect(() => {
-        if (isOpen && table) {
+        if (isOpen && currentMarketId) {
             fetchMenu();
             fetchActiveOrder();
             setCart([]);
             setWaiterName("");
         }
-    }, [isOpen, table]);
+    }, [isOpen, table, orderId, currentMarketId]);
 
     const fetchMenu = async () => {
-        const { data } = await supabase.from("menu_items").select("*").eq("market_id", table.market_id).order("category", { ascending: true });
+        if (!currentMarketId) return;
+        const { data } = await supabase
+            .from("menu_items")
+            .select("*")
+            .eq("market_id", currentMarketId)
+            .order("category", { ascending: true });
         setMenuItems(data || []);
     };
 
     const fetchActiveOrder = async () => {
         setLoading(true);
-        // Busca pedido que NÃO foi finalizado (entregue/pago/cancelado)
-        const { data } = await supabase.from("orders")
-            .select("*, order_items(*)")
-            .eq("table_id", table.id)
-            .neq("status", "delivered")
-            .neq("status", "canceled")
-            .neq("payment_status", "paid") // Importante para não pegar pedido velho pago
-            .maybeSingle();
+        let query = supabase.from("orders").select("*, order_items(*)");
 
+        if (orderId) {
+            // Prioridade: Busca pelo ID do pedido (Fluxo Counter/Delivery)
+            query = query.eq("id", orderId);
+        } else if (table) {
+            // Fallback: Busca pela mesa (Fluxo Tables)
+            query = query
+                .eq("table_id", table.id)
+                .neq("status", "delivered")
+                .neq("status", "canceled")
+                .neq("payment_status", "paid");
+        } else {
+            setLoading(false);
+            return;
+        }
+
+        const { data } = await query.maybeSingle();
         setActiveOrder(data);
         if (data?.customer_name) setWaiterName(data.customer_name);
         setLoading(false);
@@ -91,38 +110,40 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
 
     const handleSendOrder = async () => {
         if (cart.length === 0) return;
-        if (!waiterName.trim() && !activeOrder) {
+
+        // Se for pedido de mesa e não tiver garçom identificado
+        if (!orderId && !waiterName.trim() && !activeOrder) {
             toast({ title: "Identifique-se", description: "Por favor, informe o nome do garçom.", variant: "destructive" });
             return;
         }
 
         setSending(true);
         try {
-            let orderId = activeOrder?.id;
+            let targetOrderId = activeOrder?.id || orderId;
 
-            // Cria pedido se não existir
-            if (!orderId) {
+            // Se não existe pedido (apenas no caso de mesa vazia), cria um
+            if (!targetOrderId && table) {
                 const { data: newOrder, error: orderError } = await supabase.from("orders").insert({
-                    market_id: table.market_id,
+                    market_id: currentMarketId,
                     table_id: table.id,
                     status: 'pending',
-                    payment_status: 'pending', // Essencial para aparecer no caixa
+                    payment_status: 'pending',
                     order_type: 'table',
-                    total_amount: 0, // Será atualizado
+                    total_amount: 0,
                     customer_name: waiterName
                 }).select().single();
 
                 if (orderError) throw orderError;
-                orderId = newOrder.id;
+                targetOrderId = newOrder.id;
                 await supabase.from("restaurant_tables").update({ is_occupied: true }).eq("id", table.id);
-            } else if (!activeOrder.customer_name && waiterName) {
-                await supabase.from("orders").update({ customer_name: waiterName }).eq("id", orderId);
+            } else if (!activeOrder?.customer_name && waiterName && targetOrderId) {
+                await supabase.from("orders").update({ customer_name: waiterName }).eq("id", targetOrderId);
             }
 
             const itemsToInsert = cart.map(item => ({
-                order_id: orderId,
+                order_id: targetOrderId,
                 menu_item_id: item.id,
-                market_id: table.market_id,
+                market_id: currentMarketId,
                 name: item.name,
                 unit_price: item.price,
                 quantity: item.quantity,
@@ -137,8 +158,8 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
             const oldTotal = Number(activeOrder?.total_amount || 0);
             await supabase.from("orders").update({
                 total_amount: oldTotal + cartTotal,
-                status: 'pending'
-            }).eq("id", orderId);
+                status: 'pending' // Volta pra pending se adicionar itens novos
+            }).eq("id", targetOrderId);
 
             toast({ title: "Pedido Enviado!", className: "bg-green-600 text-white" });
             onOrderSent();
@@ -162,6 +183,11 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
         return acc;
     }, {} as Record<string, any[]>);
 
+    // Título Dinâmico do Sheet
+    const sheetTitle = table
+        ? `Mesa ${table.table_number}`
+        : (activeOrder ? `Pedido #${activeOrder.display_id}` : "Novo Pedido");
+
     return (
         <Sheet open={isOpen} onOpenChange={onClose}>
             <SheetContent side="right" className="w-full sm:max-w-md flex flex-col h-full p-0 bg-gray-50 border-l-0">
@@ -171,8 +197,10 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
                             <ArrowLeft className="w-5 h-5" />
                         </Button>
                         <div>
-                            <SheetTitle>Mesa {table?.table_number}</SheetTitle>
-                            <SheetDescription className="text-xs">{activeOrder ? "Mesa Aberta" : "Nova Comanda"}</SheetDescription>
+                            <SheetTitle>{sheetTitle}</SheetTitle>
+                            <SheetDescription className="text-xs">
+                                {activeOrder?.customer_name || "Adicionar Itens"}
+                            </SheetDescription>
                         </div>
                     </div>
                     {activeOrder && <Badge variant="secondary" className="bg-green-100 text-green-800">R$ {Number(activeOrder.total_amount).toFixed(2)}</Badge>}
@@ -226,8 +254,8 @@ export default function OrderSheet({ table, isOpen, onClose, onOrderSent }: Orde
                                     <span className="font-bold text-xl text-gray-900">R$ {cartTotal.toFixed(2)}</span>
                                 </div>
 
-                                {/* Input do Garçom (se ainda não tiver pedido aberto) */}
-                                {!activeOrder && (
+                                {/* Input do Garçom (se ainda não tiver pedido aberto E não for pedido já criado) */}
+                                {!activeOrder && !orderId && (
                                     <div className="mb-3 relative">
                                         <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                                         <Input

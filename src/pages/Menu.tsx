@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Plus, Trash, Image as ImageIcon, ScrollText, X, Coins, Edit2, Save } from "lucide-react";
+import { Loader2, Plus, Trash, Image as ImageIcon, ScrollText, X, Coins, Edit2, Save, Sparkles } from "lucide-react";
 
 export default function Menu() {
     const { toast } = useToast();
@@ -19,6 +19,7 @@ export default function Menu() {
     // Novo Produto
     const [newItem, setNewItem] = useState({ name: "", price: "", description: "", category: "Comida", image_url: "" });
     const [uploading, setUploading] = useState(false);
+    const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
     // Edição de Produto
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -60,6 +61,7 @@ export default function Menu() {
         setUploading(true);
         try {
             const fileName = `menu/${Math.random()}.${file.name.split('.').pop()}`;
+            // Certifique-se que o bucket 'images' existe e é público no Supabase Storage
             await supabase.storage.from('images').upload(fileName, file);
             const { data } = supabase.storage.from('images').getPublicUrl(fileName);
 
@@ -69,6 +71,45 @@ export default function Menu() {
                 setNewItem(prev => ({ ...prev, image_url: data.publicUrl }));
             }
         } catch (e) { toast({ title: "Erro upload", variant: "destructive" }); } finally { setUploading(false); }
+    };
+
+    // --- LÓGICA DE IA (MAGIC MENU) ---
+    const handleGenerateDescription = async (isEdit = false) => {
+        const targetName = isEdit ? editingItem?.name : newItem.name;
+        const targetCategory = isEdit ? editingItem?.category : newItem.category;
+        const targetImage = isEdit ? editingItem?.image_url : newItem.image_url;
+
+        if (!targetName) {
+            toast({ title: "Digite o nome do prato primeiro", variant: "destructive" });
+            return;
+        }
+
+        setIsGeneratingAi(true);
+        try {
+            const { data, error } = await supabase.functions.invoke('generate-description', {
+                body: {
+                    name: targetName,
+                    category: targetCategory,
+                    image_url: targetImage // Enviando a imagem para a IA ver
+                }
+            });
+
+            if (error) throw error;
+
+            if (data?.description) {
+                if (isEdit) {
+                    setEditingItem((prev: any) => ({ ...prev, description: data.description }));
+                } else {
+                    setNewItem(prev => ({ ...prev, description: data.description }));
+                }
+                toast({ title: "Descrição gerada com sucesso! ✨", className: "bg-purple-600 text-white" });
+            }
+        } catch (error) {
+            console.error(error);
+            toast({ title: "Erro ao gerar descrição", description: "Verifique se a função está publicada.", variant: "destructive" });
+        } finally {
+            setIsGeneratingAi(false);
+        }
     };
 
     const handleAdd = async () => {
@@ -169,7 +210,25 @@ export default function Menu() {
                             <Input placeholder="Preço" type="number" value={newItem.price} onChange={e => setNewItem({ ...newItem, price: e.target.value })} />
                             <Select value={newItem.category} onValueChange={v => setNewItem({ ...newItem, category: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Comida">Comida</SelectItem><SelectItem value="Bebida">Bebida</SelectItem></SelectContent></Select>
                         </div>
-                        <Textarea placeholder="Descrição" value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} />
+
+                        <div className="space-y-1">
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs font-medium text-gray-500">Descrição</label>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-5 text-[10px] text-purple-600 hover:text-purple-700 hover:bg-purple-50 gap-1 px-2"
+                                    onClick={() => handleGenerateDescription(false)}
+                                    disabled={isGeneratingAi || !newItem.name}
+                                >
+                                    {isGeneratingAi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                    IA
+                                </Button>
+                            </div>
+                            <Textarea placeholder="Descrição" value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} />
+                        </div>
+
                         <Button className="w-full" onClick={handleAdd} disabled={uploading || !newItem.name}><Plus className="mr-2 h-4 w-4" /> Adicionar</Button>
                     </CardContent>
                 </Card>
@@ -256,7 +315,20 @@ export default function Menu() {
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Descrição</label>
+                                <div className="flex justify-between items-center">
+                                    <label className="text-sm font-medium">Descrição</label>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-5 text-[10px] text-purple-600 hover:text-purple-700 hover:bg-purple-50 gap-1 px-2"
+                                        onClick={() => handleGenerateDescription(true)}
+                                        disabled={isGeneratingAi}
+                                    >
+                                        {isGeneratingAi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                        Melhorar com IA
+                                    </Button>
+                                </div>
                                 <Textarea value={editingItem.description} onChange={e => setEditingItem({ ...editingItem, description: e.target.value })} />
                             </div>
                         </div>
