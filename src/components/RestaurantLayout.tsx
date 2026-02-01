@@ -55,7 +55,7 @@ export default function RestaurantLayout() {
                 <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
                     <Store className="text-white w-5 h-5" />
                 </div>
-                <span className="font-bold text-lg text-gray-800 tracking-tight">Gestor Pro</span>
+                <span className="font-bold text-lg text-gray-800 tracking-tight">Flippi</span>
             </div>
 
             <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
@@ -110,7 +110,7 @@ export default function RestaurantLayout() {
                         <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
                             <Store className="text-white w-5 h-5" />
                         </div>
-                        <span className="font-bold text-lg text-gray-800">Gestor Pro</span>
+                        <span className="font-bold text-lg text-gray-800">Flippi</span>
                     </div>
 
                     <Sheet open={open} onOpenChange={setOpen}>

@@ -27,6 +27,19 @@ const DAYS = [
     { key: 'domingo', label: 'Domingo' }
 ];
 
+// --- LISTA DE CATEGORIAS ATUALIZADA ---
+const establishmentCategories = [
+    { value: "Restaurante", label: "Restaurante" },
+    { value: "Bar", label: "Bar" },
+    { value: "Cafeteria", label: "Cafeteria" },
+    { value: "Lanchonete", label: "Lanchonete & Hamburgueria" },
+    { value: "Pizzaria", label: "Pizzaria" },
+    { value: "Doceria", label: "Doceria & Confeitaria" },
+    { value: "Sorveteria", label: "Sorveteria & Açaí" },
+    { value: "Adega", label: "Adega & Bebidas" },
+    { value: "Quiosque", label: "Quiosque" },
+];
+
 function LocationPicker({ lat, lng, onLocationSelect, isLoaded }: any) {
     const [marker, setMarker] = useState(defaultCenter);
     const mapRef = useRef<google.maps.Map | null>(null);
@@ -347,7 +360,21 @@ export default function Settings() {
 
                                     <div className="grid md:grid-cols-2 gap-5 mt-4">
                                         <div className="space-y-2"><label className="text-sm font-medium">Nome</label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-                                        <div className="space-y-2"><label className="text-sm font-medium">Categoria</label><Select value={form.category} onValueChange={v => setForm({ ...form, category: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Bar">Bar</SelectItem><SelectItem value="Restaurante">Restaurante</SelectItem></SelectContent></Select></div>
+
+                                        {/* --- CATEGORIA ATUALIZADA --- */}
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Categoria</label>
+                                            <Select value={form.category} onValueChange={v => setForm({ ...form, category: v })}>
+                                                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                                                <SelectContent>
+                                                    {establishmentCategories.map((cat) => (
+                                                        <SelectItem key={cat.value} value={cat.value}>
+                                                            {cat.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
 
                                     <div className="grid md:grid-cols-2 gap-5 p-4 bg-gray-50 rounded-xl border border-gray-200">
