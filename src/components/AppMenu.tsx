@@ -87,7 +87,7 @@ export function AppMenu() {
                     ) : (
                         // Visitante
                         <div className="flex flex-col gap-1">
-                            <SheetTitle className="text-xl font-bold text-primary">Onde Ir?</SheetTitle>
+                            <SheetTitle className="text-xl font-bold text-primary">Flippi</SheetTitle>
                             <p className="text-sm text-muted-foreground">Descubra os melhores lugares.</p>
                         </div>
                     )}

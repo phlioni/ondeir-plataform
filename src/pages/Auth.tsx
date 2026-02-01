@@ -96,7 +96,7 @@ export default function Auth() {
         if (error) throw error;
 
         if (data.session) {
-          toast({ title: "Cadastro realizado!", description: "Bem-vindo ao Onde Ir." });
+          toast({ title: "Cadastro realizado!", description: "Bem-vindo ao Flippi." });
           // O Listener vai cuidar do redirect
         } else {
           toast({
@@ -146,7 +146,7 @@ export default function Auth() {
               <ArrowLeft className="w-4 h-4 mr-1" /> Voltar
             </Button>
           </div>
-          <CardTitle className="text-2xl font-bold text-primary">Onde Ir?</CardTitle>
+          <CardTitle className="text-2xl font-bold text-primary">Flippi</CardTitle>
           <CardDescription>
             {isLogin ? "Entre para descobrir lugares incríveis" : "Crie sua conta gratuitamente"}
           </CardDescription>

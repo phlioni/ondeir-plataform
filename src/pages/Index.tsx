@@ -78,7 +78,7 @@ export default function Index() {
           </Button>
           <Input
             className="border-0 bg-transparent shadow-none text-lg placeholder:text-gray-400 focus-visible:ring-0 h-10"
-            placeholder="Onde ir? (ex: música ao vivo)"
+            placeholder="Flippi (ex: música ao vivo)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
