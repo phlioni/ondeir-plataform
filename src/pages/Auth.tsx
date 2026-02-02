@@ -162,11 +162,11 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md shadow-xl border-0">
         <CardHeader className="text-center pb-2">
-          <div className="flex justify-start w-full mb-2">
+          {/* <div className="flex justify-start w-full mb-2">
             <Button variant="ghost" size="sm" className="-ml-4 h-8 text-gray-500" onClick={() => navigate("/")}>
               <ArrowLeft className="w-4 h-4 mr-1" /> Voltar
             </Button>
-          </div>
+          </div> */}
           <CardTitle className="text-2xl font-bold text-primary">Flippi Partners</CardTitle>
           <CardDescription>
             {isLogin
