@@ -37,7 +37,6 @@ type Order = {
 };
 
 // URL do som de telefone antigo (Hospedado externamente para garantir que toque)
-// Você pode substituir por um arquivo local em /public/sounds/ring.mp3 depois
 const ALERT_SOUND_URL = "https://cdn.freesound.org/previews/337/337049_3232293-lq.mp3";
 
 export default function CounterHub() {
@@ -138,7 +137,7 @@ export default function CounterHub() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
-            const { data: market } = await supabase.from('markets').select('id').eq('owner_id', user.id).single();
+            const { data: market } = await supabase.from('markets').select('id').eq('owner_id', user.id).maybeSingle();
 
             if (market) {
                 setMarketId(market.id);
@@ -426,30 +425,31 @@ export default function CounterHub() {
 
     return (
         <div className="h-[calc(100vh-100px)] flex flex-col space-y-4 animate-in fade-in">
-            {/* Header */}
-            <div className="flex justify-between items-center bg-white p-4 rounded-xl border shadow-sm">
+            {/* Header Responsivo */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl border shadow-sm gap-4">
                 <div className="flex items-center gap-4">
                     <div className="bg-purple-100 p-2 rounded-lg"><CheckCircle2 className="text-purple-600 w-6 h-6" /></div>
                     <div><h1 className="text-xl font-bold text-gray-900">Visão Balcão</h1><p className="text-xs text-gray-500">Fluxo: Entrada → Preparo → Despacho</p></div>
                 </div>
-                <div className="flex gap-2 items-center">
 
-                    {/* INDICADOR DE ÁUDIO - SÓ APARECE SE ESTIVER TOCANDO OU BLOQUEADO */}
+                {/* Controles de Ação (Som, Novo Pedido, Atualizar) */}
+                <div className="flex gap-2 items-center w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                    {/* INDICADOR DE ÁUDIO */}
                     {entryOrders.length > 0 && (
-                        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-colors ${isPlaying ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-500'}`}>
+                        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${isPlaying ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-500'}`}>
                             {isPlaying ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                            {isPlaying ? "Chamando..." : "Som Desativado"}
+                            <span className="hidden sm:inline">{isPlaying ? "Chamando..." : "Som Desativado"}</span>
                         </div>
                     )}
 
-                    <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => setIsNewOrderOpen(true)}><Plus className="w-4 h-4" /> Novo Pedido</Button>
-                    <Button variant="outline" size="icon" onClick={() => marketId && fetchOrders(marketId)} title="Atualizar"><Clock className="w-4 h-4" /></Button>
+                    <Button className="gap-2 bg-blue-600 hover:bg-blue-700 flex-1 sm:flex-none whitespace-nowrap" onClick={() => setIsNewOrderOpen(true)}><Plus className="w-4 h-4" /> Novo Pedido</Button>
+                    <Button variant="outline" size="icon" onClick={() => marketId && fetchOrders(marketId)} title="Atualizar" className="shrink-0"><Clock className="w-4 h-4" /></Button>
                 </div>
             </div>
 
             {/* Grid Kanban */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 min-h-0">
-                <Card className={`flex flex-col border-dashed h-full transition-colors ${entryOrders.length > 0 ? 'bg-red-50/50 border-red-300' : 'bg-gray-50/50 border-gray-300'}`}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 min-h-0 overflow-y-auto md:overflow-visible">
+                <Card className={`flex flex-col border-dashed h-full min-h-[300px] transition-colors ${entryOrders.length > 0 ? 'bg-red-50/50 border-red-300' : 'bg-gray-50/50 border-gray-300'}`}>
                     <CardHeader className="pb-2 py-3 bg-gray-100/50 rounded-t-lg">
                         <CardTitle className={`text-sm font-bold flex items-center gap-2 uppercase ${entryOrders.length > 0 ? 'text-red-600' : 'text-gray-700'}`}>
                             <div className={`w-2 h-2 rounded-full ${entryOrders.length > 0 ? 'bg-red-500 animate-ping' : 'bg-gray-400'}`} />
@@ -459,12 +459,12 @@ export default function CounterHub() {
                     <CardContent className="flex-1 min-h-0 p-2 bg-gray-50/30"><ScrollArea className="h-full pr-3"><div className="space-y-3">{entryOrders.map(order => <OrderCard key={order.id} order={order} secondaryButton={<Button size="sm" variant="outline" className="h-8 w-8 p-0 text-red-500 border-red-200 hover:bg-red-50" onClick={() => handleReject(order.id)} title="Recusar"><XCircle className="w-4 h-4" /></Button>} actionButton={<Button size="sm" className="bg-blue-600 h-8 text-xs w-24 animate-pulse" onClick={() => updateStatus(order.id, 'preparing')}>Aceitar</Button>} />)}{entryOrders.length === 0 && <div className="text-center text-gray-400 text-xs py-10">Sem novos pedidos.</div>}</div></ScrollArea></CardContent>
                 </Card>
 
-                <Card className="flex flex-col bg-orange-50/30 border-orange-100 h-full">
+                <Card className="flex flex-col bg-orange-50/30 border-orange-100 h-full min-h-[300px]">
                     <CardHeader className="pb-2 py-3 bg-orange-100/30 rounded-t-lg"><CardTitle className="text-sm font-bold flex items-center gap-2 text-orange-800 uppercase"><ChefHat className="w-4 h-4" /> Preparo ({prepOrders.length})</CardTitle></CardHeader>
                     <CardContent className="flex-1 min-h-0 p-2"><ScrollArea className="h-full pr-3"><div className="space-y-3">{prepOrders.map(order => <OrderCard key={order.id} order={order} actionButton={<Button size="sm" className="bg-green-600 hover:bg-green-700 h-8 text-xs w-full gap-2" onClick={() => updateStatus(order.id, 'confirmed')}><PackageCheck className="w-4 h-4" /> Pronto</Button>} />)}{prepOrders.length === 0 && <div className="text-center text-gray-400 text-xs py-10">Cozinha livre.</div>}</div></ScrollArea></CardContent>
                 </Card>
 
-                <Card className="flex flex-col bg-green-50/30 border-green-100 h-full">
+                <Card className="flex flex-col bg-green-50/30 border-green-100 h-full min-h-[300px]">
                     <CardHeader className="pb-2 py-3 bg-green-100/30 rounded-t-lg"><CardTitle className="text-sm font-bold flex items-center gap-2 text-green-800 uppercase"><DollarSign className="w-4 h-4" /> Caixa / Rota ({routeOrders.length})</CardTitle></CardHeader>
                     <CardContent className="flex-1 min-h-0 p-2"><ScrollArea className="h-full pr-3"><div className="space-y-3">{routeOrders.map(order => <OrderCard key={order.id} order={order} footerInfo={order.couriers && <Badge variant="outline" className="text-[10px] h-5 bg-blue-50 text-blue-700 border-blue-200 w-full justify-center"><Bike className="w-3 h-3 mr-1" /> {order.couriers.name}</Badge>} actionButton={order.status === 'confirmed' ? (order.order_type === 'delivery' ? <Button size="sm" className="bg-orange-500 hover:bg-orange-600 h-8 text-xs w-full gap-2" onClick={() => setDispatchOrder(order)}><Send className="w-4 h-4" /> Despachar</Button> : <Button size="sm" className="bg-gray-900 text-white h-8 text-xs w-full" onClick={() => handlePaymentClick(order)}>Receber</Button>) : <Button size="sm" disabled variant="outline" className="h-8 text-xs w-full bg-gray-50 text-gray-500 border-gray-200 cursor-not-allowed"><Clock className="w-3 h-3 mr-1" /> Aguardando Entrega...</Button>} />)}{routeOrders.length === 0 && <div className="text-center text-gray-400 text-xs py-10">Nenhum pedido em rota/caixa.</div>}</div></ScrollArea></CardContent>
                 </Card>
@@ -474,7 +474,10 @@ export default function CounterHub() {
 
             <Dialog open={isNewOrderOpen} onOpenChange={setIsNewOrderOpen}>
                 <DialogContent className="sm:max-w-md">
-                    <DialogHeader><DialogTitle>Novo Pedido</DialogTitle><DialogDescription>Inicie um pedido rápido.</DialogDescription></DialogHeader>
+                    <DialogHeader>
+                        <DialogTitle>Novo Pedido</DialogTitle>
+                        <DialogDescription>Inicie um pedido rápido.</DialogDescription>
+                    </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2"><Label>Tipo</Label><RadioGroup defaultValue="table" value={newOrderType} onValueChange={(v: any) => setNewOrderType(v)} className="flex gap-4"><div className="flex items-center space-x-2 border rounded-lg p-3 w-full cursor-pointer hover:bg-gray-50 [&:has(:checked)]:bg-blue-50"><RadioGroupItem value="table" id="r-table" /><Label htmlFor="r-table" className="cursor-pointer">Mesa / Balcão</Label></div><div className="flex items-center space-x-2 border rounded-lg p-3 w-full cursor-pointer hover:bg-gray-50 [&:has(:checked)]:bg-blue-50"><RadioGroupItem value="delivery" id="r-delivery" /><Label htmlFor="r-delivery" className="cursor-pointer">Delivery</Label></div></RadioGroup></div>
                         <div className="space-y-2"><Label>Cliente *</Label><Input placeholder="Nome" value={newOrderData.name} onChange={(e) => setNewOrderData({ ...newOrderData, name: e.target.value })} /></div>
@@ -489,7 +492,7 @@ export default function CounterHub() {
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>Pagamento e Finalização</DialogTitle>
-                        <CardDescription>Confirme o recebimento do valor.</CardDescription>
+                        <DialogDescription>Confirme o recebimento do valor.</DialogDescription>
                     </DialogHeader>
 
                     <div className="bg-gray-50 p-4 rounded-lg mb-2 flex justify-between items-center border">
@@ -535,7 +538,12 @@ export default function CounterHub() {
 
             <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
                 <DialogContent className="sm:max-w-md">
-                    <DialogHeader><DialogTitle className="text-red-600">Recusar Pedido</DialogTitle></DialogHeader>
+                    <DialogHeader>
+                        <DialogTitle className="text-red-600">Recusar Pedido</DialogTitle>
+                        <DialogDescription>
+                            Deseja realmente cancelar este pedido? Essa ação não pode ser desfeita.
+                        </DialogDescription>
+                    </DialogHeader>
                     <Textarea placeholder="Motivo..." value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} className="min-h-[100px]" />
                     <DialogFooter><Button variant="outline" onClick={() => setIsCancelDialogOpen(false)}>Voltar</Button><Button variant="destructive" onClick={confirmCancel} disabled={canceling}>Confirmar Recusa</Button></DialogFooter>
                 </DialogContent>

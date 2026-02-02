@@ -36,7 +36,9 @@ export default function Menu() {
         const init = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
-            const { data: m } = await supabase.from("markets").select("id").eq("owner_id", user.id).single();
+
+            const { data: m } = await supabase.from("markets").select("id").eq("owner_id", user.id).maybeSingle();
+
             if (m) {
                 setMarketId(m.id);
                 fetchMenu(m.id);
@@ -48,11 +50,11 @@ export default function Menu() {
     }, []);
 
     const fetchMenu = async (id: string) => {
-        // Trazemos a coluna embedding para saber quais produtos estão "sem cérebro" (null)
         const { data } = await supabase
             .from("menu_items")
             .select("*, embedding")
             .eq("market_id", id)
+            .eq("active", true)
             .order("created_at", { ascending: false });
 
         setMenuItems(data || []);
@@ -63,7 +65,6 @@ export default function Menu() {
         setIngredients(data || []);
     };
 
-    // --- FUNÇÃO AUXILIAR: GERA EMBEDDING PARA 1 ITEM ---
     const generateEmbeddingForItem = async (item: any) => {
         try {
             console.log(`Gerando IA para: ${item.name}`);
@@ -82,11 +83,9 @@ export default function Menu() {
         }
     };
 
-    // --- SINCRONIZAR IA (APENAS PENDENTES) ---
     const handleSyncAI = async () => {
         if (!menuItems.length) return;
 
-        // Filtra apenas quem NÃO tem embedding (null)
         const pendingItems = menuItems.filter(item => !item.embedding);
 
         if (pendingItems.length === 0) {
@@ -102,7 +101,6 @@ export default function Menu() {
 
         let successCount = 0;
 
-        // Processa um por um para evitar erro de rate limit
         for (const item of pendingItems) {
             const success = await generateEmbeddingForItem(item);
             if (success) successCount++;
@@ -114,11 +112,10 @@ export default function Menu() {
             className: successCount > 0 ? "bg-green-600 text-white" : "bg-red-600 text-white"
         });
 
-        if (marketId) fetchMenu(marketId); // Recarrega para atualizar status
+        if (marketId) fetchMenu(marketId);
         setIsSyncingAi(false);
     };
 
-    // --- LÓGICA DE UPLOAD ---
     const handleUpload = async (file: File, isEdit = false) => {
         setUploading(true);
         try {
@@ -134,7 +131,6 @@ export default function Menu() {
         } catch (e) { toast({ title: "Erro upload", variant: "destructive" }); } finally { setUploading(false); }
     };
 
-    // --- LÓGICA DE IA (MAGIC MENU - DESCRIÇÃO) ---
     const handleGenerateDescription = async (isEdit = false) => {
         const targetName = isEdit ? editingItem?.name : newItem.name;
         const targetCategory = isEdit ? editingItem?.category : newItem.category;
@@ -172,32 +168,69 @@ export default function Menu() {
     const handleAdd = async () => {
         if (!marketId || !newItem.name) return;
 
-        // 1. Insere o item
         const { data, error } = await supabase.from("menu_items").insert({
             market_id: marketId,
             name: newItem.name,
             description: newItem.description,
             price: parseFloat(newItem.price),
             category: newItem.category,
-            image_url: newItem.image_url
+            image_url: newItem.image_url,
+            active: true
         }).select().single();
 
         if (!error && data) {
             setNewItem({ name: "", price: "", description: "", category: "Comida", image_url: "" });
             toast({ title: "Item adicionado!" });
-
-            // 2. Atualiza lista local
             setMenuItems(prev => [data, ...prev]);
-
-            // 3. AUTO-SYNC: Gera embedding APENAS para este item novo (silenciosamente)
             generateEmbeddingForItem(data);
         }
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm("Tem certeza que deseja excluir este item?")) return;
-        await supabase.from("menu_items").delete().eq("id", id);
-        setMenuItems(prev => prev.filter(i => i.id !== id));
+
+        try {
+            const { count, error: checkError } = await supabase
+                .from("order_items")
+                .select("*", { count: 'exact', head: true })
+                .eq("menu_item_id", id);
+
+            if (checkError) throw checkError;
+
+            if (count && count > 0) {
+                const { error } = await supabase
+                    .from("menu_items")
+                    .update({ active: false })
+                    .eq("id", id);
+
+                if (error) throw error;
+
+                toast({
+                    title: "Item Arquivado",
+                    description: "Como já teve vendas, o item foi ocultado para manter o histórico.",
+                    className: "bg-blue-600 text-white"
+                });
+            } else {
+                const { error } = await supabase
+                    .from("menu_items")
+                    .delete()
+                    .eq("id", id);
+
+                if (error) throw error;
+
+                toast({ title: "Item excluído permanentemente." });
+            }
+
+            setMenuItems(prev => prev.filter(i => i.id !== id));
+
+        } catch (error: any) {
+            console.error(error);
+            toast({
+                title: "Erro ao excluir",
+                description: error.message || "Não foi possível remover o item.",
+                variant: "destructive"
+            });
+        }
     };
 
     const openEditModal = (item: any) => {
@@ -219,18 +252,13 @@ export default function Menu() {
         if (!error) {
             toast({ title: "Item atualizado!" });
             setIsEditOpen(false);
-
-            // Atualiza lista local
             setMenuItems(prev => prev.map(i => i.id === editingItem.id ? editingItem : i));
-
-            // AUTO-SYNC: Regenera embedding APENAS para este item editado
             generateEmbeddingForItem(editingItem);
         } else {
             toast({ title: "Erro ao atualizar", variant: "destructive" });
         }
     };
 
-    // --- LÓGICA: FICHA TÉCNICA ---
     const openRecipe = async (product: any) => {
         setSelectedProduct(product);
         const { data } = await supabase
@@ -263,26 +291,25 @@ export default function Menu() {
 
     if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-primary" /></div>;
 
-    // Calcula quantos itens precisam de sync para mostrar alerta visual
     const pendingCount = menuItems.filter(i => !i.embedding).length;
 
     return (
-        <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500">
+        <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="space-y-1">
                     <h1 className="text-2xl font-bold text-gray-900">Gestão de Cardápio</h1>
                     <p className="text-gray-500 text-sm">Gerencie produtos e fichas técnicas.</p>
                 </div>
 
-                <Button
+                {/* <Button
                     variant={pendingCount > 0 ? "default" : "outline"}
                     onClick={handleSyncAI}
                     disabled={isSyncingAi}
-                    className={`gap-2 ${pendingCount > 0 ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'text-purple-600 border-purple-200 hover:bg-purple-50'}`}
+                    className={`gap-2 w-full md:w-auto ${pendingCount > 0 ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'text-purple-600 border-purple-200 hover:bg-purple-50'}`}
                 >
                     {isSyncingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : pendingCount > 0 ? <AlertCircle className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
                     {isSyncingAi ? "Processando..." : pendingCount > 0 ? `Corrigir ${pendingCount} itens` : "Sincronizar IA"}
-                </Button>
+                </Button> */}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -329,43 +356,53 @@ export default function Menu() {
                         const coinsPrice = Math.ceil(item.price * 20);
 
                         return (
-                            <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm flex gap-4 items-center group relative">
-                                {!item.embedding && (
-                                    <div className="absolute top-2 left-2 w-2 h-2 bg-orange-500 rounded-full animate-pulse" title="Aguardando inteligência artificial..." />
-                                )}
-                                <div className="w-16 h-16 bg-gray-100 rounded-lg bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${item.image_url || '/placeholder.svg'})` }} />
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-start">
-                                        <h4 className="font-bold">{item.name}</h4>
-                                        <div className="text-right">
-                                            <span className="text-primary font-bold block">R$ {item.price.toFixed(2)}</span>
-                                        </div>
-                                    </div>
+                            <div key={item.id} className="bg-white p-3 rounded-xl border shadow-sm flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center group relative">
+                                {/* Imagem e Conteúdo Principal */}
+                                <div className="flex gap-3 w-full">
+                                    {!item.embedding && (
+                                        <div className="absolute top-2 left-2 w-2 h-2 bg-orange-500 rounded-full animate-pulse z-10" title="Aguardando inteligência artificial..." />
+                                    )}
 
-                                    <div className="flex gap-3 text-xs mt-1 mb-2">
-                                        <div className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-100" title="Quanto o cliente ganha ao comprar">
-                                            <Coins className="w-3 h-3" />
-                                            <span className="font-semibold">Ganha: {coinsReward}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100" title="Quanto custa para comprar com moedas">
-                                            <Coins className="w-3 h-3" />
-                                            <span className="font-semibold">Compra: {coinsPrice}</span>
-                                        </div>
-                                    </div>
+                                    <div className="w-20 h-20 sm:w-16 sm:h-16 bg-gray-100 rounded-lg bg-cover bg-center shrink-0" style={{ backgroundImage: `url(${item.image_url || '/placeholder.svg'})` }} />
 
-                                    <div className="flex gap-2 mt-1">
-                                        <p className="text-xs text-gray-500 truncate flex-1">{item.description}</p>
-                                        <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={() => openRecipe(item)}>
-                                            <ScrollText className="w-3 h-3" /> Ficha Técnica
-                                        </Button>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-start">
+                                            <h4 className="font-bold text-sm sm:text-base line-clamp-2">{item.name}</h4>
+                                            <div className="text-right ml-2 shrink-0">
+                                                <span className="text-primary font-bold block text-sm sm:text-base">R$ {item.price.toFixed(2)}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-2 text-[10px] sm:text-xs mt-1 mb-2">
+                                            <div className="flex items-center gap-1 text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100">
+                                                <Coins className="w-3 h-3" />
+                                                <span className="font-semibold">+{coinsReward}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1 text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">
+                                                <Coins className="w-3 h-3" />
+                                                <span className="font-semibold">-{coinsPrice}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col sm:flex-row gap-2 mt-1">
+                                            <p className="text-xs text-gray-500 line-clamp-2 sm:truncate flex-1">{item.description}</p>
+                                            <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1 w-fit hidden sm:flex" onClick={() => openRecipe(item)}>
+                                                <ScrollText className="w-3 h-3" /> Ficha Técnica
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-primary" onClick={() => openEditModal(item)}>
-                                        <Edit2 className="w-4 h-4" />
+
+                                {/* Ações: No Mobile é uma barra inferior, no Desktop é hover lateral */}
+                                <div className="flex sm:flex-col gap-2 sm:gap-1 mt-2 sm:mt-0 w-full sm:w-auto border-t sm:border-t-0 pt-2 sm:pt-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity justify-end">
+                                    <Button variant="ghost" size="sm" className="h-8 flex-1 sm:flex-none text-gray-500 hover:text-primary justify-center sm:justify-start bg-gray-50 sm:bg-transparent" onClick={() => openEditModal(item)}>
+                                        <Edit2 className="w-4 h-4 mr-2 sm:mr-0" /> <span className="sm:hidden text-xs">Editar</span>
                                     </Button>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-red-600" onClick={() => handleDelete(item.id)}>
-                                        <Trash className="w-4 h-4" />
+                                    <Button variant="ghost" size="sm" className="h-8 flex-1 sm:flex-none text-gray-500 hover:text-red-600 justify-center sm:justify-start bg-gray-50 sm:bg-transparent" onClick={() => handleDelete(item.id)}>
+                                        <Trash className="w-4 h-4 mr-2 sm:mr-0" /> <span className="sm:hidden text-xs">Excluir</span>
+                                    </Button>
+                                    <Button variant="outline" size="sm" className="h-8 flex-1 text-gray-500 sm:hidden justify-center bg-white text-xs" onClick={() => openRecipe(item)}>
+                                        <ScrollText className="w-4 h-4 mr-2" /> Ficha
                                     </Button>
                                 </div>
                             </div>

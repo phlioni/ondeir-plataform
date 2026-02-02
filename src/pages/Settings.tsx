@@ -27,7 +27,6 @@ const DAYS = [
     { key: 'domingo', label: 'Domingo' }
 ];
 
-// --- LISTA DE CATEGORIAS ATUALIZADA ---
 const establishmentCategories = [
     { value: "Restaurante", label: "Restaurante" },
     { value: "Bar", label: "Bar" },
@@ -99,7 +98,7 @@ export default function Settings() {
     });
 
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const appBaseUrl = isLocalhost ? 'http://localhost:8080' : 'https://ondeir-app.vercel.app';
+    const appBaseUrl = isLocalhost ? 'http://localhost:8080' : 'https://flippi.app';
 
     const menuLink = market ? `${window.location.origin}/menu/${market.id}` : "";
     const deliveryLink = market
@@ -111,15 +110,32 @@ export default function Settings() {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 setUser(user);
-                const { data: m } = await supabase.from("markets").select("*").eq("owner_id", user.id).single();
+
+                // --- CORREÇÃO AQUI: maybeSingle() em vez de single() ---
+                const { data: m, error } = await supabase
+                    .from("markets")
+                    .select("*")
+                    .eq("owner_id", user.id)
+                    .maybeSingle(); // Retorna null se não existir, sem erro 406
+
+                if (error) {
+                    console.error("Erro ao buscar dados da loja:", error);
+                }
+
                 if (m) {
                     setMarket(m);
                     const defaultHours: any = {};
                     DAYS.forEach(d => defaultHours[d.key] = { open: "08:00", close: "18:00", closed: false });
 
                     setForm({
-                        name: m.name, category: m.category, description: m.description || "", address: m.address || "",
-                        amenities: m.amenities?.join(", ") || "", cover_image: m.cover_image || "", latitude: m.latitude || 0, longitude: m.longitude || 0,
+                        name: m.name,
+                        category: m.category || "", // Garante string vazia se null
+                        description: m.description || "",
+                        address: m.address || "",
+                        amenities: m.amenities?.join(", ") || "",
+                        cover_image: m.cover_image || "",
+                        latitude: m.latitude || 0,
+                        longitude: m.longitude || 0,
                         slug: m.slug || "",
                         delivery_fee: m.delivery_fee || 0,
                         delivery_time_min: m.delivery_time_min || 30,
@@ -426,18 +442,33 @@ export default function Settings() {
                                     {DAYS.map(day => {
                                         const dayData = form.opening_hours[day.key] || { open: "08:00", close: "18:00", closed: false };
                                         return (
-                                            <div key={day.key} className={`flex items-center justify-between p-3 rounded-lg border ${dayData.closed ? 'bg-gray-50 border-dashed' : 'bg-white border-solid'}`}>
-                                                <div className="flex items-center gap-4">
+                                            <div key={day.key} className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border gap-3 sm:gap-0 ${dayData.closed ? 'bg-gray-50 border-dashed' : 'bg-white border-solid'}`}>
+
+                                                {/* Nome do Dia */}
+                                                <div className="flex items-center justify-between w-full sm:w-auto">
                                                     <div className="flex flex-col">
                                                         <span className={`font-medium ${dayData.closed ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{day.label}</span>
                                                         {dayData.closed && <span className="text-[10px] text-red-400 font-bold uppercase">Fechado</span>}
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
+
+                                                {/* Controles de Hora */}
+                                                <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
                                                     {!dayData.closed ? (
-                                                        <><Input type="time" className="w-24 h-8 text-xs" value={dayData.open} onChange={e => updateDay(day.key, 'open', e.target.value)} /><span className="text-gray-400">-</span><Input type="time" className="w-24 h-8 text-xs" value={dayData.close} onChange={e => updateDay(day.key, 'close', e.target.value)} /></>
-                                                    ) : (<div className="w-[210px] h-8 flex items-center justify-center text-xs text-gray-400 bg-gray-100 rounded">Não abre</div>)}
-                                                    <div className="ml-2 border-l pl-2"><Switch checked={!dayData.closed} onCheckedChange={(checked) => updateDay(day.key, 'closed', !checked)} className="data-[state=checked]:bg-green-600" /></div>
+                                                        <div className="flex items-center gap-2 flex-1 sm:flex-none">
+                                                            <Input type="time" className="flex-1 sm:w-24 h-8 text-xs" value={dayData.open} onChange={e => updateDay(day.key, 'open', e.target.value)} />
+                                                            <span className="text-gray-400">-</span>
+                                                            <Input type="time" className="flex-1 sm:w-24 h-8 text-xs" value={dayData.close} onChange={e => updateDay(day.key, 'close', e.target.value)} />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex-1 sm:flex-none flex items-center justify-center h-8 text-xs text-gray-400 bg-gray-100 rounded px-2 w-full sm:w-[210px]">
+                                                            Fechado
+                                                        </div>
+                                                    )}
+
+                                                    <div className="ml-2 border-l pl-2 shrink-0">
+                                                        <Switch checked={!dayData.closed} onCheckedChange={(checked) => updateDay(day.key, 'closed', !checked)} className="data-[state=checked]:bg-green-600" />
+                                                    </div>
                                                 </div>
                                             </div>
                                         );

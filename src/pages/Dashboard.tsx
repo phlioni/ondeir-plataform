@@ -32,9 +32,22 @@ export default function Dashboard() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // 1. Busca Loja
-        const { data: market } = await supabase.from('markets').select('id').eq('owner_id', user.id).single();
-        if (!market) return;
+        // 1. Busca Loja (CORREÇÃO AQUI: maybeSingle() para evitar erro se não tiver loja)
+        const { data: market, error } = await supabase
+            .from('markets')
+            .select('id')
+            .eq('owner_id', user.id)
+            .maybeSingle();
+
+        if (error) {
+            console.error("Erro ao buscar dashboard:", error);
+        }
+
+        // Se não tiver loja, para aqui mas tira o loading
+        if (!market) {
+            setLoading(false);
+            return;
+        }
 
         // 2. Métricas Financeiras (Hoje)
         const { data: ordersToday } = await supabase

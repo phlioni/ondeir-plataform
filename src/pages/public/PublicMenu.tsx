@@ -255,7 +255,7 @@ export default function PublicMenu() {
 
     const handleRedirectToDelivery = () => {
         // Redireciona para o App principal
-        window.location.href = `https://ondeir-app.vercel.app/place/${marketId}`;
+        window.location.href = `https://flippi.app/place/${marketId}`;
     };
 
     // --- RENDERIZAÇÃO ---

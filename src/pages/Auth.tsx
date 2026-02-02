@@ -29,19 +29,31 @@ export default function Auth() {
   }, [fromState]);
 
   useEffect(() => {
-    // Verifica sessão existente ao carregar
+    // 1. Verifica sessão existente COM PROTEÇÃO ANTI-CRASH
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        checkRoleAndRedirect(session.user.id);
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        // Se o token estiver inválido, joga erro para limpar
+        if (error) throw error;
+
+        if (session) {
+          await checkRoleAndRedirect(session.user.id);
+        }
+      } catch (error) {
+        console.error("Sessão inválida. Resetando...", error);
+        await supabase.auth.signOut();
+        localStorage.clear();
       }
     };
     checkUser();
 
-    // Escuta mudanças de estado (ex: login concluído)
+    // 2. Escuta login
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session) {
         await checkRoleAndRedirect(session.user.id);
+      } else if (event === "SIGNED_OUT") {
+        setLoading(false);
       }
     });
 
@@ -50,26 +62,74 @@ export default function Auth() {
     };
   }, []);
 
+  // --- O SEGREDO ESTÁ AQUI ---
   const checkRoleAndRedirect = async (userId: string) => {
-    const storedPath = localStorage.getItem('auth_return_path');
-    const returnPath = storedPath || fromState || "/";
-    localStorage.removeItem('auth_return_path');
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, display_name")
+        .eq("id", userId)
+        .single();
 
-    if (returnPath !== "/" && returnPath !== "/auth") {
-      navigate(returnPath, { replace: true });
-      return;
-    }
+      // REGRA: Apenas Parceiros e Admins
+      if (profile?.role === "partner" || profile?.role === "admin") {
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", userId)
-      .single();
+        // --- AUTO-INICIALIZAÇÃO DA LOJA ---
+        // 1. Verifica se a loja já existe
+        const { data: existingMarket } = await supabase
+          .from('markets')
+          .select('id')
+          .eq('owner_id', userId)
+          .maybeSingle();
 
-    if (profile?.role === "partner" || profile?.role === "admin") {
-      navigate("/dashboard");
-    } else {
-      navigate("/");
+        // 2. Se NÃO existe, cria agora mesmo (Automático)
+        if (!existingMarket) {
+          console.log("Usuário novo detectado. Criando loja padrão...");
+
+          // Usamos o ID do usuário como slug inicial para garantir 100% de unicidade
+          // O usuário pode mudar isso depois nas configurações
+          const initialSlug = userId;
+
+          const { error: createError } = await supabase.from('markets').insert({
+            owner_id: userId,
+            name: "Minha Loja Nova", // Nome padrão
+            slug: initialSlug,       // Slug garantido único
+            category: "Restaurante", // Categoria padrão
+            delivery_fee: 5.00,
+            delivery_time_min: 30,
+            delivery_time_max: 45
+          });
+
+          if (createError) {
+            console.error("Erro ao criar loja automática:", createError);
+            toast({ title: "Erro na inicialização", description: "Contate o suporte.", variant: "destructive" });
+            return; // Não redireciona se falhar
+          }
+
+          toast({ title: "Bem-vindo!", description: "Sua loja foi criada automaticamente." });
+        }
+        // ----------------------------------
+
+        const storedPath = localStorage.getItem('auth_return_path');
+        const returnPath = storedPath || fromState || "/dashboard";
+        localStorage.removeItem('auth_return_path');
+
+        if (returnPath !== "/auth") {
+          navigate(returnPath, { replace: true });
+        } else {
+          navigate("/dashboard", { replace: true });
+        }
+      } else {
+        // Bloqueia usuário comum
+        await supabase.auth.signOut();
+        toast({
+          title: "Acesso Restrito",
+          description: "Esta área é exclusiva para parceiros. Utilize o App do Cliente.",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error("Erro ao verificar permissões:", error);
     }
   };
 
@@ -83,16 +143,15 @@ export default function Auth() {
         password,
       });
       if (error) throw error;
-      // O listener do useEffect cuidará do redirecionamento
+      // O listener cuidará do resto
     } catch (error: any) {
       toast({
         title: "Erro ao entrar",
         description: error.message === "Invalid login credentials"
           ? "E-mail ou senha incorretos."
-          : error.message,
+          : "Falha ao autenticar.",
         variant: "destructive",
       });
-    } finally {
       setLoading(false);
     }
   };
@@ -106,17 +165,16 @@ export default function Auth() {
               <ArrowLeft className="w-4 h-4 mr-1" /> Voltar
             </Button>
           </div>
-          <CardTitle className="text-2xl font-bold text-primary">Flippi</CardTitle>
+          <CardTitle className="text-2xl font-bold text-primary">Flippi Partners</CardTitle>
           <CardDescription>
             {isLogin
-              ? "Acesse sua conta de parceiro"
+              ? "Acesse sua conta de gestão"
               : "Torne-se um parceiro exclusivo"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
 
           {isLogin ? (
-            /* --- TELA DE LOGIN (EMAIL/SENHA APENAS) --- */
             <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in">
               <div className="space-y-2">
                 <div className="relative">
@@ -146,11 +204,10 @@ export default function Auth() {
               </div>
 
               <Button type="submit" className="w-full h-12 text-lg font-bold" disabled={loading}>
-                {loading ? <Loader2 className="animate-spin" /> : "Acessar Plataforma"}
+                {loading ? <Loader2 className="animate-spin" /> : "Acessar Painel"}
               </Button>
             </form>
           ) : (
-            /* --- TELA DE SOLICITAÇÃO (WHATSAPP) --- */
             <div className="space-y-6 py-4 animate-in fade-in">
               <div className="text-center space-y-2">
                 <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
