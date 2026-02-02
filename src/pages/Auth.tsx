@@ -87,9 +87,9 @@ export default function Auth() {
           console.log("Usuário novo detectado. Criando loja padrão...");
 
           // Usamos o ID do usuário como slug inicial para garantir 100% de unicidade
-          // O usuário pode mudar isso depois nas configurações
           const initialSlug = userId;
 
+          // CORREÇÃO: Adicionadas latitude e longitude padrão para evitar erro 23502
           const { error: createError } = await supabase.from('markets').insert({
             owner_id: userId,
             name: "Minha Loja Nova", // Nome padrão
@@ -97,7 +97,9 @@ export default function Auth() {
             category: "Restaurante", // Categoria padrão
             delivery_fee: 5.00,
             delivery_time_min: 30,
-            delivery_time_max: 45
+            delivery_time_max: 45,
+            latitude: -23.550520,    // Valor padrão (SP) para não quebrar o banco
+            longitude: -46.633308
           });
 
           if (createError) {
