@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Bike, MapPin, CheckCircle2, Navigation, DollarSign, LogOut, Phone, Package, CreditCard, Wallet, Lock, Car, Clock, Star, ThumbsUp, AlertCircle, Quote } from "lucide-react"; // Adicionei Quote
+import { Loader2, Bike, MapPin, CheckCircle2, Navigation, DollarSign, LogOut, Phone, Package, CreditCard, Wallet, Lock, Car, Clock, Star, ThumbsUp, AlertCircle, Quote, Map } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,12 +23,16 @@ export default function CourierApp() {
     const [myDeliveries, setMyDeliveries] = useState<any[]>([]);
     const [myReviews, setMyReviews] = useState<any[]>([]);
 
-    // Modais
+    // Modais e Seleções
     const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
     const [isFinanceModalOpen, setIsFinanceModalOpen] = useState(false);
     const [selectedOrderToFinish, setSelectedOrderToFinish] = useState<string | null>(null);
     const [deliveryCodeInput, setDeliveryCodeInput] = useState("");
     const [verifying, setVerifying] = useState(false);
+
+    // Modal de GPS
+    const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+    const [targetLocation, setTargetLocation] = useState<{ address: string, number: string, city: string } | null>(null);
 
     // GPS
     const [gpsError, setGpsError] = useState<string | null>(null);
@@ -56,27 +60,9 @@ export default function CourierApp() {
             fetchReviews();
 
             const channel = supabase.channel('courier_view')
-                .on('postgres_changes', {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'orders'
-                }, (payload: any) => {
-                    const newOrder = payload.new;
-                    const isMine = newOrder.courier_id === courier.id;
-
-                    if (newOrder.status === 'canceled' && isMine) {
-                        toast({
-                            title: "Pedido Cancelado ⚠️",
-                            description: `Motivo: ${newOrder.cancellation_reason || 'Cancelado pelo estabelecimento'}`,
-                            variant: "destructive",
-                            duration: 6000,
-                        });
-                    }
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
                     fetchOrders();
                     fetchEarnings();
-                })
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, () => {
-                    fetchOrders();
                 })
                 .subscribe();
 
@@ -89,6 +75,26 @@ export default function CourierApp() {
         else stopTracking();
         return () => stopTracking();
     }, [courier, myDeliveries.length]);
+
+    // --- FUNÇÃO DE RESGATE ROBUSTA (AGORA COM PROFILE) ---
+    const getCustomerPhone = (order: any): string | null => {
+        // 1. Tenta pegar do profile vinculado
+        if (order.profiles?.phone_number) return order.profiles.phone_number;
+
+        // 2. Tenta campos diretos (para pedidos sem profile)
+        if (order.customer_phone) return order.customer_phone;
+        if (order.phone) return order.phone;
+
+        // 3. Tenta dentro do JSON
+        if (order.address_data) {
+            const data = typeof order.address_data === 'string' ? JSON.parse(order.address_data) : order.address_data;
+            if (data.phone) return data.phone;
+            if (data.telefone) return data.telefone;
+            if (data.whatsapp) return data.whatsapp;
+            if (data.celular) return data.celular;
+        }
+        return null;
+    };
 
     const formatAddress = (order: any) => {
         if (order.address_street) {
@@ -174,15 +180,16 @@ export default function CourierApp() {
 
     const fetchOrders = async () => {
         if (!courier) return;
+        // JOIN COM PROFILE USANDO user_id
         const { data: ready } = await supabase.from('orders')
-            .select('*')
+            .select('*, profiles:user_id(phone_number)')
             .eq('market_id', marketId)
             .eq('status', 'confirmed')
             .is('courier_id', null)
             .order('created_at');
 
         const { data: mine } = await supabase.from('orders')
-            .select('*')
+            .select('*, profiles:user_id(phone_number)')
             .eq('market_id', marketId)
             .eq('courier_id', courier.id)
             .neq('status', 'delivered')
@@ -228,7 +235,6 @@ export default function CourierApp() {
 
     const fetchReviews = async () => {
         if (!courier) return;
-        // AGORA BUSCA O COMMENT TAMBÉM
         const { data } = await supabase
             .from('reviews')
             .select('rating, tags, created_at, comment')
@@ -269,14 +275,34 @@ export default function CourierApp() {
         } catch (e) { toast({ title: "Erro de conexão", variant: "destructive" }); } finally { setVerifying(false); }
     };
 
-    const openWaze = (address: string, number: string, city: string) => {
-        const query = encodeURIComponent(`${address}, ${number}, ${city}`);
-        window.open(`https://waze.com/ul?q=${query}`, '_blank');
+    const handleOpenMapSelector = (address: string, number: string, city: string) => {
+        setTargetLocation({ address, number, city });
+        setIsMapModalOpen(true);
     };
 
-    const openWhatsApp = (phone: string) => {
-        window.open(`https://wa.me/55${phone.replace(/\D/g, '')}`, '_blank');
+    const openSpecificMap = (app: 'waze' | 'google' | 'apple') => {
+        if (!targetLocation) return;
+        const query = encodeURIComponent(`${targetLocation.address}, ${targetLocation.number}, ${targetLocation.city || ''}`);
+        let url = "";
+
+        if (app === 'waze') url = `https://waze.com/ul?q=${query}`;
+        if (app === 'google') url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+        if (app === 'apple') url = `http://maps.apple.com/?q=${query}`;
+
+        window.open(url, '_blank');
+        setIsMapModalOpen(false);
     };
+
+    const openWhatsApp = (phone: string | null) => {
+        if (!phone) return toast({ title: "Telefone não disponível", variant: "destructive" });
+        const cleanPhone = phone.replace(/\D/g, '');
+        window.open(`https://wa.me/55${cleanPhone}?text=Olá, sou seu entregador.`, '_blank');
+    };
+
+    const handleCall = (phone: string | null) => {
+        if (!phone) return toast({ title: "Telefone não disponível", variant: "destructive" });
+        window.open(`tel:${phone.replace(/\D/g, '')}`);
+    }
 
     const getDeadline = (order: any) => {
         if (!order.estimated_max) return null;
@@ -382,15 +408,12 @@ export default function CourierApp() {
                                         </div>
                                         <span className="text-[10px] text-gray-400">{new Date(review.created_at).toLocaleDateString()}</span>
                                     </div>
-
-                                    {/* EXIBIÇÃO DO COMENTÁRIO */}
                                     {review.comment && (
                                         <div className="mb-3 bg-gray-50 p-2 rounded text-xs text-gray-600 italic flex gap-2">
                                             <Quote className="w-4 h-4 text-gray-300 shrink-0" />
                                             <p>"{review.comment}"</p>
                                         </div>
                                     )}
-
                                     <div className="flex flex-wrap gap-2">
                                         {review.tags?.map((tag: string, t: number) => (
                                             <Badge key={t} variant="secondary" className="text-[10px] bg-blue-50 text-blue-700 hover:bg-blue-50 gap-1 font-normal">
@@ -454,7 +477,6 @@ export default function CourierApp() {
                 </div>
 
                 <TabsContent value="my-list" className="p-4 space-y-4 mt-0">
-                    {/* ...Conteúdo das entregas... */}
                     {myDeliveries.length > 0 && !gpsError && (
                         <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 animate-pulse">
                             <Navigation className="w-3 h-3" /> Localização ativa
@@ -472,6 +494,9 @@ export default function CourierApp() {
                         const total = (subtotal + delivery) - discount;
                         const originalValue = subtotal + delivery;
                         const fullAddress = formatAddress(order);
+
+                        // Busca telefone
+                        const customerPhone = getCustomerPhone(order);
 
                         return (
                             <Card key={order.id} className="border-l-4 border-l-blue-500 shadow-md overflow-hidden relative">
@@ -512,9 +537,12 @@ export default function CourierApp() {
                                     </div>
 
                                     <div className="grid grid-cols-4 gap-2">
-                                        <Button variant="outline" className="col-span-1 h-12 border-green-200 bg-green-50 text-green-700" onClick={() => openWhatsApp(order.customer_phone)}><Phone className="w-5 h-5" /></Button>
-                                        <Button variant="outline" className="col-span-1 h-12 border-blue-200 bg-blue-50 text-blue-700" onClick={() => openWaze(order.address_street, order.address_number, order.address_city)}><Navigation className="w-5 h-5" /></Button>
+                                        <Button variant="outline" className="col-span-1 h-12 border-green-200 bg-green-50 text-green-700" onClick={() => openWhatsApp(customerPhone)}><Phone className="w-5 h-5" /></Button>
+                                        <Button variant="outline" className="col-span-1 h-12 border-blue-200 bg-blue-50 text-blue-700" onClick={() => handleOpenMapSelector(order.address_street, order.address_number, order.address_city)}><Navigation className="w-5 h-5" /></Button>
                                         <Button className="col-span-2 h-12 bg-green-600 hover:bg-green-700 font-bold text-base" onClick={() => requestFinishOrder(order.id)}><CheckCircle2 className="w-5 h-5 mr-2" /> Entregue</Button>
+                                    </div>
+                                    <div className="mt-2 flex justify-end">
+                                        <Button variant="ghost" className="h-8 text-xs text-gray-500" onClick={() => handleCall(customerPhone)}>Ligar para Cliente</Button>
                                     </div>
                                     <div className="mt-3 pt-3 border-t text-xs text-gray-500 line-clamp-1">{fullAddress}</div>
                                 </CardContent>
@@ -552,6 +580,42 @@ export default function CourierApp() {
                     <DialogHeader><div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-2"><Lock className="w-6 h-6 text-blue-600" /></div><DialogTitle className="text-center">Código de Entrega</DialogTitle><DialogDescription className="text-center">Solicite ao cliente.</DialogDescription></DialogHeader>
                     <div className="py-4 flex justify-center"><Input type="tel" maxLength={4} className="text-center text-3xl font-bold tracking-[1rem] h-16 w-48 border-2 border-primary/50 focus:border-primary" placeholder="0000" value={deliveryCodeInput} onChange={(e) => setDeliveryCodeInput(e.target.value.replace(/\D/g, ''))} /></div>
                     <DialogFooter><Button className="w-full h-12 text-lg font-bold" onClick={verifyAndFinishOrder} disabled={verifying}>{verifying ? <Loader2 className="animate-spin" /> : "Confirmar"}</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* --- NOVO MODAL DE SELEÇÃO DE MAPA --- */}
+            <Dialog open={isMapModalOpen} onOpenChange={setIsMapModalOpen}>
+                <DialogContent className="sm:max-w-xs">
+                    <DialogHeader>
+                        <DialogTitle className="text-center">Escolher GPS</DialogTitle>
+                        <DialogDescription className="text-center">Qual aplicativo você quer usar?</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-3 py-4">
+                        <Button variant="outline" className="h-14 justify-start gap-3 border-2 hover:border-blue-500 hover:bg-blue-50" onClick={() => openSpecificMap('google')}>
+                            <Map className="w-6 h-6 text-blue-600" />
+                            <div className="text-left">
+                                <span className="block font-bold text-gray-900">Google Maps</span>
+                                <span className="text-xs text-gray-500">Recomendado</span>
+                            </div>
+                        </Button>
+                        <Button variant="outline" className="h-14 justify-start gap-3 border-2 hover:border-cyan-500 hover:bg-cyan-50" onClick={() => openSpecificMap('waze')}>
+                            <Navigation className="w-6 h-6 text-cyan-500" />
+                            <div className="text-left">
+                                <span className="block font-bold text-gray-900">Waze</span>
+                                <span className="text-xs text-gray-500">Trânsito em tempo real</span>
+                            </div>
+                        </Button>
+                        <Button variant="outline" className="h-14 justify-start gap-3 border-2 hover:border-gray-500 hover:bg-gray-50" onClick={() => openSpecificMap('apple')}>
+                            <MapPin className="w-6 h-6 text-gray-600" />
+                            <div className="text-left">
+                                <span className="block font-bold text-gray-900">Apple Maps</span>
+                                <span className="text-xs text-gray-500">Padrão iOS</span>
+                            </div>
+                        </Button>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setIsMapModalOpen(false)}>Cancelar</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

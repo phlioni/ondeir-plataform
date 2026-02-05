@@ -10,17 +10,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, ChefHat, Bike, Receipt, CheckCircle2, DollarSign, Clock, MapPin, User, XCircle, AlertTriangle, Send, PackageCheck, Plus, Store, CreditCard, Banknote, Wallet, StickyNote, Volume2, VolumeX } from "lucide-react";
+import { Loader2, ChefHat, Bike, Receipt, CheckCircle2, DollarSign, Clock, MapPin, User, XCircle, AlertTriangle, Send, PackageCheck, Plus, Store, CreditCard, Banknote, Wallet, StickyNote, Volume2, VolumeX, MessageCircle } from "lucide-react";
 import { DispatchModal } from "@/components/DispatchModal";
 import OrderSheet from "@/components/OrderSheet";
 
-// Tipo de Pedido
+// Tipo de Pedido Atualizado
 type Order = {
     id: string;
     display_id: number;
     status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'canceled';
     order_type: 'table' | 'delivery';
     customer_name?: string;
+    customer_phone?: string;
+    user_id?: string;
     address_street?: string;
     address_number?: string;
     address_neighborhood?: string;
@@ -34,6 +36,8 @@ type Order = {
     order_items?: { name: string; quantity: number; notes?: string }[];
     couriers?: { name: string };
     courier_id?: string;
+    // Join com Profiles
+    profiles?: { phone_number: string | null } | null;
 };
 
 // URL do som de telefone antigo (Hospedado externamente para garantir que toque)
@@ -52,7 +56,7 @@ export default function CounterHub() {
 
     // Controle de Áudio
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const [isSoundEnabled, setIsSoundEnabled] = useState(false); // Estado para controlar permissão do navegador
+    const [isSoundEnabled, setIsSoundEnabled] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
 
     // Modais Operacionais
@@ -84,12 +88,10 @@ export default function CounterHub() {
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [sheetOrderId, setSheetOrderId] = useState<string | undefined>(undefined);
 
-    // --- INICIALIZAÇÃO DO ÁUDIO ---
     useEffect(() => {
         audioRef.current = new Audio(ALERT_SOUND_URL);
-        audioRef.current.loop = true; // Loop infinito até alguém atender
+        audioRef.current.loop = true;
 
-        // Tenta habilitar áudio na primeira interação
         const enableAudio = () => {
             setIsSoundEnabled(true);
             window.removeEventListener('click', enableAudio);
@@ -108,29 +110,25 @@ export default function CounterHub() {
         };
     }, []);
 
-    // --- CONTROLE DE TOCAR/PARAR O SOM ---
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
 
-        // Regra: Toca se tiver pedidos em 'entryOrders' (Pendente) e o som estiver habilitado
         const shouldPlay = entryOrders.length > 0;
 
         if (shouldPlay && !isPlaying) {
-            // Tenta tocar
             audio.play().then(() => {
                 setIsPlaying(true);
             }).catch((err) => {
-                console.warn("Autoplay bloqueado pelo navegador:", err);
-                setIsPlaying(false); // Mantém false para mostrar botão de ativar som se precisar
+                console.warn("Autoplay bloqueado:", err);
+                setIsPlaying(false);
             });
         } else if (!shouldPlay && isPlaying) {
-            // Para de tocar
             audio.pause();
             audio.currentTime = 0;
             setIsPlaying(false);
         }
-    }, [entryOrders, isPlaying]); // Reage a mudanças na lista de entrada
+    }, [entryOrders, isPlaying]);
 
     useEffect(() => {
         const init = async () => {
@@ -186,13 +184,15 @@ export default function CounterHub() {
     };
 
     const fetchOrders = async (mId: string) => {
+        // Query ajustada para trazer profiles
         const { data: rawData, error } = await supabase
             .from('orders')
             .select(`
                 *, 
                 restaurant_tables(table_number), 
                 order_items(name, quantity, notes), 
-                couriers(name)
+                couriers(name),
+                profiles:user_id(phone_number)
             `)
             .eq('market_id', mId)
             .neq('status', 'canceled')
@@ -201,6 +201,7 @@ export default function CounterHub() {
 
         if (error) { console.error("Erro fetch:", error); return; }
 
+        // Cast forçado para tipagem correta
         const data = rawData as unknown as Order[];
 
         if (data) {
@@ -220,7 +221,6 @@ export default function CounterHub() {
         }
     };
 
-    // --- PAGAMENTO E FINALIZAÇÃO ---
     const handlePaymentClick = (order: Order) => {
         setSelectedPaymentOrder(order);
         setPaymentMethod("credit");
@@ -255,7 +255,6 @@ export default function CounterHub() {
         }
     };
 
-    // --- CRIAR PEDIDO BALCÃO ---
     const handleCreateOrder = async () => {
         if (!marketId || !newOrderData.name) {
             toast({ title: "Nome do cliente é obrigatório", variant: "destructive" });
@@ -331,12 +330,10 @@ export default function CounterHub() {
 
     const formatAddress = (order: Order) => {
         if (order.order_type !== 'delivery') return `Mesa ${order.restaurant_tables?.table_number || 'Balcão'}`;
-
         let fullAddress = order.address_street || "";
         if (order.address_number) fullAddress += `, ${order.address_number}`;
         if (order.address_neighborhood) fullAddress += ` - ${order.address_neighborhood}`;
         if (order.address_complement) fullAddress += ` (${order.address_complement})`;
-
         return fullAddress || "Retirada no Local";
     };
 
@@ -350,34 +347,75 @@ export default function CounterHub() {
         }
     };
 
-    const OrderCard = ({ order, actionButton, secondaryButton, footerInfo }: { order: Order, actionButton?: React.ReactNode, secondaryButton?: React.ReactNode, footerInfo?: React.ReactNode }) => (
-        <div
-            className={`bg-white p-3 rounded-lg border shadow-sm hover:shadow-md transition-all cursor-pointer ${order.status === 'confirmed' ? 'border-blue-300 bg-blue-50/20' : 'border-gray-200'}`}
-            onClick={() => { setSheetOrderId(order.id); setIsSheetOpen(true); }}
-        >
-            <div className="flex justify-between items-start mb-2">
-                <span className="font-bold text-gray-800 text-sm">#{order.display_id}</span>
-                <Badge variant={order.order_type === 'delivery' ? 'secondary' : 'outline'} className="text-[10px] h-5 px-1.5">
-                    {order.order_type === 'delivery' ? <Bike className="w-3 h-3 mr-1" /> : <Receipt className="w-3 h-3 mr-1" />}
-                    {order.order_type === 'delivery' ? 'Delivery' : 'Balcão'}
-                </Badge>
-            </div>
+    // --- FUNÇÃO PARA PEGAR TELEFONE (PRIORIDADE PROFILE) ---
+    const getOrderPhone = (order: Order): string | null => {
+        if (order.profiles?.phone_number) return order.profiles.phone_number;
+        if (order.customer_phone) return order.customer_phone;
+        if (order.address_data) {
+            try {
+                const d = typeof order.address_data === 'string' ? JSON.parse(order.address_data) : order.address_data;
+                return d.phone || d.telefone || d.whatsapp || d.celular;
+            } catch (e) { return null; }
+        }
+        return null;
+    };
 
-            <div className="mb-2 space-y-1">
-                <p className="font-semibold text-sm truncate flex items-center gap-1">
-                    <User className="w-3 h-3 text-gray-400" /> {order.customer_name || "Cliente"}
-                </p>
-                <p className="text-xs text-gray-500 flex items-start gap-1 leading-snug">
-                    <MapPin className="w-3 h-3 text-gray-400 mt-0.5 shrink-0" />
-                    <span>{formatAddress(order)}</span>
-                </p>
+    const openWhatsApp = (e: React.MouseEvent, phone: string | null) => {
+        e.stopPropagation();
+        if (!phone) {
+            toast({ title: "Sem telefone", description: "O pedido não tem telefone registrado.", variant: "destructive" });
+            return;
+        }
+        const cleanPhone = phone.replace(/\D/g, '');
+        window.open(`https://wa.me/55${cleanPhone}`, '_blank');
+    };
 
-                {order.payment_method && (
-                    <div className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded w-fit mt-1">
-                        <Wallet className="w-3 h-3" />
-                        <span>{translatePayment(order.payment_method)}</span>
+    const OrderCard = ({ order, actionButton, secondaryButton, footerInfo }: { order: Order, actionButton?: React.ReactNode, secondaryButton?: React.ReactNode, footerInfo?: React.ReactNode }) => {
+        const phone = getOrderPhone(order);
+
+        return (
+            <div
+                className={`bg-white p-3 rounded-lg border shadow-sm hover:shadow-md transition-all cursor-pointer ${order.status === 'confirmed' ? 'border-blue-300 bg-blue-50/20' : 'border-gray-200'}`}
+                onClick={() => { setSheetOrderId(order.id); setIsSheetOpen(true); }}
+            >
+                <div className="flex justify-between items-start mb-2">
+                    <span className="font-bold text-gray-800 text-sm">#{order.display_id}</span>
+                    <div className="flex gap-2 items-center">
+                        {/* BOTÃO WHATSAPP - SÓ DELIVERY */}
+                        {order.order_type === 'delivery' && (
+                            <Button
+                                size="icon"
+                                variant="ghost"
+                                className={`h-5 w-5 ${phone ? 'text-green-600 hover:text-green-700' : 'text-gray-300'}`}
+                                onClick={(e) => openWhatsApp(e, phone)}
+                                title={phone ? "WhatsApp" : "Sem telefone"}
+                            >
+                                <MessageCircle className="w-4 h-4" />
+                            </Button>
+                        )}
+                        <Badge variant={order.order_type === 'delivery' ? 'secondary' : 'outline'} className="text-[10px] h-5 px-1.5">
+                            {order.order_type === 'delivery' ? <Bike className="w-3 h-3 mr-1" /> : <Receipt className="w-3 h-3 mr-1" />}
+                            {order.order_type === 'delivery' ? 'Delivery' : 'Balcão'}
+                        </Badge>
                     </div>
-                )}
+                </div>
+
+                <div className="mb-2 space-y-1">
+                    <p className="font-semibold text-sm truncate flex items-center gap-1">
+                        <User className="w-3 h-3 text-gray-400" /> {order.customer_name || "Cliente"}
+                    </p>
+                    <p className="text-xs text-gray-500 flex items-start gap-1 leading-snug">
+                        <MapPin className="w-3 h-3 text-gray-400 mt-0.5 shrink-0" />
+                        <span>{formatAddress(order)}</span>
+                    </p>
+
+                    {order.payment_method && (
+                        <div className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded w-fit mt-1">
+                            <Wallet className="w-3 h-3" />
+                            <span>{translatePayment(order.payment_method)}</span>
+                        </div>
+                    )}
+                </div>
 
                 <div className="bg-gray-50 rounded p-1.5 mt-2 space-y-2 min-h-[40px]">
                     {order.order_items && order.order_items.length > 0 ? (
@@ -399,27 +437,27 @@ export default function CounterHub() {
                         </>
                     ) : <span className="text-[10px] text-gray-400 block pt-1 italic text-center">Nenhum item adicionado</span>}
                 </div>
-            </div>
 
-            <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
-                <span className="font-bold text-sm text-gray-900">R$ {order.total_amount.toFixed(2)}</span>
-                <div className="flex gap-1">{secondaryButton}{actionButton}</div>
-            </div>
-
-            {footerInfo ? (
-                <div className="flex justify-between items-center mt-2 pt-1" onClick={e => e.stopPropagation()}>
-                    {footerInfo}
+                <div className="flex justify-between items-center mt-3 pt-2 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+                    <span className="font-bold text-sm text-gray-900">R$ {order.total_amount.toFixed(2)}</span>
+                    <div className="flex gap-1">{secondaryButton}{actionButton}</div>
                 </div>
-            ) : (
-                <div className="flex justify-between items-center mt-1">
-                    <div className="text-[10px] text-gray-400 flex items-center gap-1">
-                        <Clock className="w-3 h-3" /> {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+
+                {footerInfo ? (
+                    <div className="flex justify-between items-center mt-2 pt-1" onClick={e => e.stopPropagation()}>
+                        {footerInfo}
                     </div>
-                    {order.status === 'confirmed' && <Badge className="text-[10px] h-4 bg-blue-100 text-blue-700 border-0 hover:bg-blue-100">No Balcão</Badge>}
-                </div>
-            )}
-        </div>
-    );
+                ) : (
+                    <div className="flex justify-between items-center mt-1">
+                        <div className="text-[10px] text-gray-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        {order.status === 'confirmed' && <Badge className="text-[10px] h-4 bg-blue-100 text-blue-700 border-0 hover:bg-blue-100">No Balcão</Badge>}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     if (loading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin text-primary w-10 h-10" /></div>;
 
@@ -434,7 +472,6 @@ export default function CounterHub() {
 
                 {/* Controles de Ação (Som, Novo Pedido, Atualizar) */}
                 <div className="flex gap-2 items-center w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-                    {/* INDICADOR DE ÁUDIO */}
                     {entryOrders.length > 0 && (
                         <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-colors whitespace-nowrap ${isPlaying ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-500'}`}>
                             {isPlaying ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}

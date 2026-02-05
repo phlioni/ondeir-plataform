@@ -137,7 +137,7 @@ export function DispatchModal({ order, isOpen, onClose, onSuccess }: DispatchMod
                                 <SelectContent>
                                     {couriers.map(c => (
                                         <SelectItem key={c.id} value={c.id}>
-                                            {c.name} {c.is_busy ? '(Ocupado)' : '(Livre)'}
+                                            {c.name}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
