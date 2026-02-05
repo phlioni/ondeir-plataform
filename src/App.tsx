@@ -30,6 +30,7 @@ import Couriers from "./pages/Couriers";
 import Operations from "./pages/Operations";
 import Reviews from "./pages/Reviews";
 import CounterHub from "./pages/CounterHub";
+import LandingPage from "./pages/LandingPage";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +45,8 @@ const App = () => (
           <Routes>
             {/* --- ROTAS PÚBLICAS (Acessíveis sem login) --- */}
             <Route path="/auth" element={<Auth />} />
+
+            <Route path="/landingpage" element={<LandingPage />} />
 
             <Route path="/place/:id" element={<VenueDetail />} />
 
