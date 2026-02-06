@@ -31,6 +31,7 @@ import Operations from "./pages/Operations"; // Mantive importado
 import Reviews from "./pages/Reviews";
 import CounterHub from "./pages/CounterHub";
 import LandingPage from "./pages/LandingPage";
+import GoogleAnalytics from "./components/GoogleAnalytics";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <GoogleAnalytics />
             <Routes>
               {/* --- ROTAS PÚBLICAS (Acessíveis sem login) --- */}
               <Route path="/auth" element={<Auth />} />
