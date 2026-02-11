@@ -14,41 +14,41 @@ import {
     Bike,
     Repeat,
     QrCode,
-    Ticket,
     Store,
-    LayoutDashboard
+    LayoutDashboard,
+    HeartHandshake,
+    Play
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Helmet } from 'react-helmet-async';
 
-// --- CONFIGURAÇÃO DE SEO ---
+// --- CONFIGURAÇÃO DE SEO DE ALTA PERFORMANCE ---
 const SEO_DATA = {
-    title: "Flippi | Parceiro Fundador - Sistema para Delivery e Mesa",
-    description: "Transforme pedidos pontuais em clientes recorrentes. Sistema completo para Delivery e Cardápio Digital na Mesa. Acesso gratuito vitalício para fundadores.",
+    title: "Flippi | O Sistema de Delivery que Potencializa seu Negócio (Grátis)",
+    description: "Chega de pagar mensalidades. Tenha Cardápio Digital, Comanda de Mesa e Gestão de Entregadores em uma plataforma única. Comece a crescer hoje.",
     url: "https://appflippi.com",
     image: "/images/smart-hub.png",
     twitterHandle: "@flippiapp"
 };
 
-// --- SCHEMA MARKUP (JSON-LD) ---
+// --- SCHEMA MARKUP ---
 const schemaMarkup = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Flippi",
-    "headline": "Ecossistema de Gestão e Fidelização Omnicanal",
+    "headline": "Acelerador de Negócios Gastronômicos",
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "Web, Android, iOS",
     "offers": {
         "@type": "Offer",
         "price": "0.00",
         "priceCurrency": "BRL",
-        "description": "Oferta exclusiva para os 50 primeiros parceiros fundadores."
+        "description": "Acesso Vitalício Gratuito para Empreendedores."
     },
     "description": SEO_DATA.description
 };
 
-// --- COMPONENTES VISUAIS ---
-
+// --- COMPONENTES VISUAIS (FRAMES) ---
 const DesktopFrame = ({ children, className }: { children: React.ReactNode, className?: string }) => (
     <div className={`relative rounded-xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-slate-200 bg-white ${className}`}>
         <div className="h-9 bg-slate-50 border-b border-slate-100 flex items-center px-4 gap-2" aria-hidden="true">
@@ -91,38 +91,32 @@ const TimelineStep = ({ icon: Icon, title, desc, step }: { icon: any, title: str
     </div>
 );
 
-// --- BARRA DE URGÊNCIA ---
-const UrgencyBanner = ({ onCtaClick }: { onCtaClick: () => void }) => (
+// --- BARRA DE MISSÃO (NOVO CONCEITO) ---
+const MissionBanner = ({ onCtaClick }: { onCtaClick: () => void }) => (
     <div className="bg-slate-900 text-white relative overflow-hidden border-b border-slate-800">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full md:w-2/3 h-full bg-emerald-500/10 blur-xl pointer-events-none"></div>
         <div className="container mx-auto px-4 py-3 relative z-10">
             <div className="flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4">
                 <div className="flex items-start md:items-center gap-3 text-center md:text-left w-full md:w-auto justify-center md:justify-start">
-                    <div className="hidden md:flex bg-emerald-500/20 text-emerald-400 p-1.5 rounded-lg animate-pulse shrink-0">
-                        <Rocket className="w-5 h-5" />
+                    <div className="hidden md:flex bg-emerald-500/20 text-emerald-400 p-1.5 rounded-lg shrink-0 animate-pulse">
+                        <HeartHandshake className="w-5 h-5" />
                     </div>
                     <div>
                         <p className="text-sm md:text-base font-medium text-slate-200">
                             <span className="text-emerald-400 font-bold uppercase tracking-wider text-[10px] md:text-xs block mb-0.5">
-                                Programa de Lançamento
+                                Movimento Empreendedor
                             </span>
-                            Seja um <strong>Parceiro Fundador</strong> e ganhe <span className="text-white font-bold underline decoration-emerald-500 decoration-2 underline-offset-2">Acesso Vitalício Gratuito</span>.
+                            Nossa missão é ver você crescer. <span className="text-white font-bold underline decoration-emerald-500 decoration-2 underline-offset-2">Plataforma 100% Gratuita</span> para alavancar seu negócio.
                         </p>
                     </div>
                 </div>
                 <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
-                    <div className="w-full md:w-auto text-center md:text-right bg-slate-800/50 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none flex items-center justify-center md:justify-end gap-3">
-                        <div className="flex items-center gap-2 text-xs text-slate-300 border border-slate-700 rounded-full px-3 py-1">
-                            <Ticket className="w-3 h-3 text-emerald-400" />
-                            <span>Lote Único: <strong>50 Vagas</strong></span>
-                        </div>
-                    </div>
                     <Button
                         onClick={onCtaClick}
                         size="sm"
                         className="w-full md:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold rounded-full h-10 md:h-9 px-5 shadow-[0_0_20px_rgba(16,185,129,0.3)] border border-emerald-400/50 whitespace-nowrap animate-bounce-subtle"
                     >
-                        Quero minha vaga grátis
+                        Criar Minha Conta Grátis
                         <ArrowRight className="w-4 h-4 ml-1" />
                     </Button>
                 </div>
@@ -134,15 +128,13 @@ const UrgencyBanner = ({ onCtaClick }: { onCtaClick: () => void }) => (
 export default function LandingPage() {
     const navigate = useNavigate();
 
-    const handleWhatsappClick = () => {
-        window.open("https://wa.me/5513997977755?text=Olá!%20Quero%20ser%20um%20dos%2050%20Parceiros%20Fundadores%20do%20Flippi%20e%20garantir%20acesso%20gratuito.", "_blank", "noopener noreferrer");
+    // Redirecionamento Direto para Cadastro
+    const handleStartNow = () => {
+        navigate("/auth", { state: { intent: 'signup' } });
     };
 
-    const scrollToTimeline = () => {
-        const element = document.getElementById('como-funciona');
-        if (element) {
-            element.scrollIntoView({ behavior: 'smooth' });
-        }
+    const handleWhatsappClick = () => {
+        window.open("https://wa.me/5513997977755?text=Olá!%20Tenho%20dúvidas%20sobre%20o%20Flippi%20e%20como%20potencializar%20meu%20negócio.", "_blank", "noopener noreferrer");
     };
 
     return (
@@ -158,7 +150,7 @@ export default function LandingPage() {
                 </script>
             </Helmet>
 
-            <UrgencyBanner onCtaClick={handleWhatsappClick} />
+            <MissionBanner onCtaClick={handleStartNow} />
 
             <header className="sticky top-0 w-full z-50 bg-white/95 backdrop-blur-md border-b border-slate-100 transition-all duration-300">
                 <nav className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -180,11 +172,11 @@ export default function LandingPage() {
                     <div className="flex items-center gap-3">
                         <Link to="/auth" className="hidden sm:block">
                             <Button variant="ghost" className="font-medium text-slate-600 hover:text-emerald-600">
-                                Login Parceiro
+                                Já sou parceiro
                             </Button>
                         </Link>
-                        <Button onClick={() => navigate('/auth')} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-6 font-semibold shadow-emerald-200 shadow-md">
-                            Acessar
+                        <Button onClick={handleStartNow} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-6 font-semibold shadow-emerald-200 shadow-md">
+                            Começar Agora
                         </Button>
                     </div>
                 </nav>
@@ -192,75 +184,81 @@ export default function LandingPage() {
 
             <main>
 
-                {/* --- HERO SECTION --- */}
+                {/* --- HERO SECTION DE ALTO IMPACTO --- */}
                 <section aria-label="Introdução" className="relative pt-12 pb-16 md:pt-20 lg:pt-32 overflow-visible bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-50 via-white to-white">
                     <div className="container mx-auto px-4 text-center z-10 relative">
 
-                        <div className="max-w-4xl mx-auto mb-12 md:mb-16 space-y-6 md:space-y-8">
+                        <div className="max-w-5xl mx-auto mb-12 md:mb-16 space-y-6 md:space-y-8">
 
-                            {/* Tagline Híbrida */}
+                            {/* Tagline de Autoridade */}
                             <div className="flex items-center justify-center gap-2 mb-4 animate-in fade-in zoom-in duration-500">
-                                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-1 text-xs font-semibold rounded-full flex items-center gap-1">
-                                    <Store className="w-3 h-3" />
-                                    Omnicanal: Delivery + Mesa
+                                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-1 text-xs font-semibold rounded-full flex items-center gap-1 uppercase tracking-wide">
+                                    <Rocket className="w-3 h-3" />
+                                    Tecnologia de Franquia • Custo Zero
                                 </Badge>
-                                <span className="text-slate-400 text-xs font-medium">Lançamento Oficial</span>
                             </div>
 
                             <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1]">
-                                Seu Negócio <br className="hidden md:block" />
+                                Potencialize Seu Delivery. <br className="hidden md:block" />
                                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">
-                                    Num Estalo.
+                                    Elimine Taxas. Cresça Grátis.
                                 </span>
                             </h1>
 
-                            <p className="text-base md:text-xl text-slate-600 leading-relaxed max-w-2xl mx-auto px-2">
-                                Um acelerador de negócios que une <strong>Página de Delivery</strong>, <strong>Cardápio Digital na Mesa</strong> e <strong>Fidelidade</strong>. Tudo numa plataforma única.
+                            <p className="text-base md:text-xl text-slate-600 leading-relaxed max-w-3xl mx-auto px-2 font-medium">
+                                A única plataforma <strong>All-in-One</strong> que te dá Cardápio Digital, Comanda de Mesa e Gestão de Entregadores sem cobrar mensalidade. <br className="hidden md:block" />Feito de empreendedor para empreendedor.
                             </p>
 
-                            <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center pt-2 px-4 md:px-0">
-                                <Button size="lg" onClick={handleWhatsappClick} className="w-full sm:w-auto h-12 md:h-14 px-8 text-base md:text-lg bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-xl shadow-emerald-200 transition-all font-bold">
-                                    Quero ser Membro Fundador
+                            <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center pt-4 px-4 md:px-0">
+                                <Button size="lg" onClick={handleStartNow} className="w-full sm:w-auto h-14 px-8 text-lg bg-emerald-600 hover:bg-emerald-700 text-white rounded-full shadow-xl shadow-emerald-200 transition-all font-bold transform hover:scale-105 duration-200">
+                                    Quero Potencializar Meu Negócio
                                     <ArrowRight className="ml-2 h-5 w-5" />
                                 </Button>
                             </div>
 
-                            <div className="pt-6 md:pt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs md:text-sm text-slate-500 font-medium">
-                                <div className="flex items-center gap-1.5">
-                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                                    <span>Venda no Instagram</span>
+                            <div className="pt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-slate-500 font-medium">
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    <span>Setup em 30 segundos</span>
                                 </div>
                                 <div className="hidden sm:block w-1 h-1 bg-slate-300 rounded-full"></div>
-                                <div className="flex items-center gap-1.5">
-                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                                    <span>QR Code na Mesa</span>
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    <span>Sem cartão de crédito</span>
+                                </div>
+                                <div className="hidden sm:block w-1 h-1 bg-slate-300 rounded-full"></div>
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    <span>Acesso Imediato</span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* HERO IMAGES */}
-                        <div className="relative max-w-6xl mx-auto perspective-1000 mt-8 md:mt-12 px-2 sm:px-0">
+                        {/* HERO IMAGES - PROVA DO PRODUTO */}
+                        <div className="relative max-w-6xl mx-auto perspective-1000 mt-10 md:mt-16 px-2 sm:px-0">
                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-emerald-400/20 blur-[80px] md:blur-[120px] -z-10 rounded-full pointer-events-none"></div>
 
                             <div className="relative z-10">
-                                <DesktopFrame className="border-slate-200/80 shadow-xl md:shadow-2xl">
+                                <DesktopFrame className="border-slate-200/80 shadow-2xl">
                                     <img
                                         src="/images/smart-hub.png"
-                                        alt="Smart Hub Flippi"
+                                        alt="Dashboard Flippi"
                                         className="w-full h-auto object-cover"
                                         width="1200"
                                         height="675"
                                         loading="eager"
                                     />
+                                    {/* Overlay sutil para dar profundidade */}
                                     <div className="absolute inset-0 bg-gradient-to-t from-white/10 to-transparent pointer-events-none"></div>
                                 </DesktopFrame>
                             </div>
 
-                            <div className="absolute -bottom-8 -right-1 md:-bottom-16 md:-right-8 w-[30%] md:w-[25%] z-20 shadow-[0_15px_30px_-5px_rgba(0,0,0,0.3)] md:shadow-[0_30px_60px_-10px_rgba(0,0,0,0.4)] rounded-[2rem] md:rounded-[2.5rem] transform rotate-[-3deg] border-2 border-white/20">
+                            {/* Elemento flutuante mobile */}
+                            <div className="absolute -bottom-6 -right-2 md:-bottom-12 md:-right-8 w-[28%] md:w-[22%] z-20 shadow-2xl rounded-[2rem] md:rounded-[2.5rem] transform rotate-[-3deg] border-4 border-white transition-transform hover:rotate-0 duration-500">
                                 <MobileFrame>
                                     <img
                                         src="/images/hero-app.JPG"
-                                        alt="Aplicativo Flippi"
+                                        alt="App Mobile Flippi"
                                         className="w-full h-full object-cover"
                                         loading="lazy"
                                     />
@@ -270,51 +268,52 @@ export default function LandingPage() {
                     </div>
                 </section>
 
-                {/* --- SEÇÃO: HÍBRIDO (MESA & DELIVERY) --- */}
+                {/* --- SEÇÃO: POR QUE É DIFERENTE? --- */}
                 <section className="py-16 md:py-24 bg-white border-y border-slate-100">
                     <div className="container mx-auto px-4">
                         <div className="text-center max-w-3xl mx-auto mb-16">
-                            <h2 className="text-3xl font-bold text-slate-900 mb-4">Um Sistema, Múltiplos Canais</h2>
+                            <Badge variant="outline" className="mb-4 border-emerald-200 bg-emerald-50 text-emerald-700">Omnicanalidade Real</Badge>
+                            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">Um Sistema. Todo o Controle.</h2>
                             <p className="text-slate-600 text-lg">
-                                O Flippi centraliza sua operação. Não importa de onde vem o pedido, tudo cai no mesmo lugar.
+                                Centralize sua operação. O Flippi acaba com a bagunça de ter vários tablets e impressoras. É Delivery, Mesa e Balcão falando a mesma língua.
                             </p>
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-8">
-                            {/* Card Delivery */}
-                            <div className="bg-slate-50 rounded-3xl p-8 border border-slate-100 flex flex-col items-center text-center hover:shadow-lg transition-shadow">
-                                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
+                            {/* Card Delivery - Foco em Venda */}
+                            <div className="bg-slate-50 rounded-3xl p-8 border border-slate-100 flex flex-col items-center text-center hover:shadow-lg transition-all duration-300 group">
+                                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                     <Smartphone className="w-8 h-8" />
                                 </div>
-                                <h3 className="text-xl font-bold mb-3">Sua Página de Delivery</h3>
+                                <h3 className="text-xl font-bold mb-3">Sua Marca, Seu Lucro</h3>
                                 <p className="text-slate-600 mb-6">
-                                    O link perfeito para a bio do Instagram e WhatsApp. Seu cliente vê fotos, escolhe variações e fecha o pedido sozinho.
+                                    Um link de delivery próprio para vender no Instagram e WhatsApp sem pagar comissão por pedido. O cliente é seu, não do marketplace.
                                 </p>
                                 <ul className="text-sm text-slate-500 space-y-2 text-left w-full max-w-xs mx-auto">
-                                    <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-500" /> Identidade própria (Sua Marca)</li>
-                                    <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-500" /> Sem concorrência na tela</li>
+                                    <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-500" /> Identidade Visual Personalizada</li>
+                                    <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-500" /> Checkout Simplificado</li>
                                 </ul>
                             </div>
 
-                            {/* Card Mesa */}
-                            <div className="bg-slate-50 rounded-3xl p-8 border border-slate-100 flex flex-col items-center text-center hover:shadow-lg transition-shadow">
-                                <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center mb-6">
+                            {/* Card Mesa - Foco em Agilidade */}
+                            <div className="bg-slate-50 rounded-3xl p-8 border border-slate-100 flex flex-col items-center text-center hover:shadow-lg transition-all duration-300 group">
+                                <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                     <QrCode className="w-8 h-8" />
                                 </div>
-                                <h3 className="text-xl font-bold mb-3">Cardápio Digital na Mesa</h3>
+                                <h3 className="text-xl font-bold mb-3">Autoatendimento na Mesa</h3>
                                 <p className="text-slate-600 mb-6">
-                                    Agilize o atendimento no salão. O cliente escaneia o QR Code na mesa e faz o pedido sem precisar baixar nenhum aplicativo.
+                                    Agilize o giro de mesas. Seu cliente escaneia o QR Code, pede e o pedido sai direto na cozinha. Menos garçons, mais eficiência.
                                 </p>
                                 <ul className="text-sm text-slate-500 space-y-2 text-left w-full max-w-xs mx-auto">
-                                    <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-orange-500" /> Sem custos extras</li>
-                                    <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-orange-500" /> Reduz erros de anotação</li>
+                                    <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-orange-500" /> Sem custo de implantação</li>
+                                    <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-orange-500" /> Zero erros de anotação</li>
                                 </ul>
                             </div>
                         </div>
                     </div>
                 </section>
 
-                {/* --- TIMELINE: SMART HUB --- */}
+                {/* --- TIMELINE: COMO FUNCIONA (SIMPLICIDADE) --- */}
                 <section id="como-funciona" aria-label="Smart Hub" className="py-16 md:py-24 bg-slate-50 scroll-mt-20">
                     <div className="container mx-auto px-4">
                         <div className="grid lg:grid-cols-2 gap-10 md:gap-16 items-start">
@@ -324,14 +323,14 @@ export default function LandingPage() {
                                     Smart Hub
                                 </Badge>
                                 <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4 md:mb-6 leading-tight">
-                                    Operação Centralizada: <br />
-                                    <span className="text-purple-600">Fim do Caos.</span>
+                                    Operação Profissional <br />
+                                    <span className="text-purple-600">Ao Alcance de Todos.</span>
                                 </h2>
                                 <p className="text-base md:text-lg text-slate-600 mb-6 md:mb-8 leading-relaxed px-4 md:px-0">
-                                    Receba, prepare e despache numa interface simples. O Smart Hub organiza a jornada do pedido e garante que a cozinha e o balcão falem a mesma língua.
+                                    Não importa se você vende 10 ou 1000 pedidos por dia. Nossa tecnologia organiza a jornada do pedido, da cozinha à entrega, garantindo que você escale sem caos.
                                 </p>
-                                <Button onClick={handleWhatsappClick} className="w-full sm:w-auto h-12 px-8 bg-slate-900 text-white rounded-full hover:bg-slate-800 shadow-lg transition-transform hover:scale-105">
-                                    Quero testar no meu negócio
+                                <Button onClick={handleStartNow} className="w-full sm:w-auto h-12 px-8 bg-slate-900 text-white rounded-full hover:bg-slate-800 shadow-lg transition-transform hover:scale-105">
+                                    Criar Conta e Testar Agora
                                 </Button>
                             </div>
 
@@ -339,26 +338,26 @@ export default function LandingPage() {
                                 <TimelineStep
                                     step="1"
                                     icon={LayoutDashboard}
-                                    title="Fluxo Unificado"
-                                    desc="Pedidos do Delivery e da Mesa chegam na mesma tela. Sua operação não para."
+                                    title="Tudo numa Tela Só"
+                                    desc="Pedidos do Delivery, Mesa e Balcão centralizados. O fim das múltiplas abas abertas."
                                 />
                                 <TimelineStep
                                     step="2"
                                     icon={Utensils}
-                                    title="KDS de Cozinha"
-                                    desc="Controle visual de produção em tempo real. A cozinha sabe exatamente o que fazer."
+                                    title="KDS (Tela de Cozinha)"
+                                    desc="Substitua as impressoras de papel por telas organizadas. A cozinha produz mais rápido e sem erros."
                                 />
                                 <TimelineStep
                                     step="3"
                                     icon={Bike}
-                                    title="Despacho em 1 Clique"
-                                    desc="Conecte-se com seus entregadores. O sistema organiza a rota e informa o pagamento."
+                                    title="Logística Descomplicada"
+                                    desc="Organize seus entregadores e rotas com um clique. O cliente recebe atualizações em tempo real."
                                 />
                                 <TimelineStep
                                     step="4"
                                     icon={Repeat}
-                                    title="Fidelização Automática"
-                                    desc="Venda concluída? O cliente ganha Flippi Coins para voltar na próxima."
+                                    title="Fidelidade Automática"
+                                    desc="O sistema convida seu cliente a voltar. Transforme pedidos pontuais em receita recorrente."
                                 />
                             </div>
 
@@ -366,7 +365,7 @@ export default function LandingPage() {
                     </div>
                 </section>
 
-                {/* --- DESTAQUE: COINS --- */}
+                {/* --- FIDELIDADE (O SEGREDO DO CRESCIMENTO) --- */}
                 <section aria-label="Sistema de Fidelidade" className="py-16 md:py-24 bg-white overflow-hidden">
                     <div className="container mx-auto px-4">
                         <div className="grid lg:grid-cols-2 gap-10 md:gap-16 items-center">
@@ -388,29 +387,29 @@ export default function LandingPage() {
                             <div className="space-y-6 md:space-y-8 order-last lg:order-2 text-center lg:text-left">
                                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-yellow-100 text-yellow-800 text-sm font-bold border border-yellow-200 shadow-sm">
                                     <Coins className="h-4 w-4" />
-                                    Economia Circular
+                                    Flippi Coins
                                 </div>
 
                                 <h2 className="text-3xl md:text-5xl font-bold text-slate-900 leading-tight">
-                                    Transforme Pedidos em <br />
-                                    <span className="text-yellow-500">Clientes Recorrentes.</span>
+                                    Transforme Clientes em <br />
+                                    <span className="text-yellow-500">Fãs Recorrentes.</span>
                                 </h2>
 
                                 <p className="text-base md:text-lg text-slate-600 leading-relaxed">
-                                    O cliente ganha Coins ao comprar e usa como desconto na próxima. Você define a regra, o sistema faz a mágica.
+                                    Grandes apps viciam os usuários com cashback e pontos. Agora você tem essa mesma arma poderosa no seu negócio. O cliente ganha Coins e volta para gastar com você.
                                 </p>
 
                                 <ul className="bg-slate-50 p-5 md:p-6 rounded-2xl border border-slate-100 space-y-4 text-left">
                                     <li className="flex items-start gap-3">
                                         <div className="bg-emerald-100 p-1 rounded-full mt-0.5 min-w-[1.5rem]"><CheckCircle2 className="h-4 w-4 text-emerald-600" /></div>
                                         <span className="text-slate-700 text-sm md:text-base">
-                                            <strong>Retenção Real:</strong> O cliente volta porque tem saldo acumulado.
+                                            <strong>Retenção Real:</strong> O cliente prefere pedir de você porque tem saldo acumulado.
                                         </span>
                                     </li>
                                     <li className="flex items-start gap-3">
                                         <div className="bg-emerald-100 p-1 rounded-full mt-0.5 min-w-[1.5rem]"><CheckCircle2 className="h-4 w-4 text-emerald-600" /></div>
                                         <span className="text-slate-700 text-sm md:text-base">
-                                            <strong>Controle Total:</strong> Você faz recargas e define quanto quer investir na fidelidade.
+                                            <strong>Controle Total:</strong> Você define as regras do jogo. Invista em quem traz retorno.
                                         </span>
                                     </li>
                                 </ul>
@@ -419,13 +418,13 @@ export default function LandingPage() {
                     </div>
                 </section>
 
-                {/* --- PROBLEMA X SOLUÇÃO (O que não somos) --- */}
+                {/* --- TRANSPARÊNCIA (O QUE NÃO SOMOS) --- */}
                 <section aria-label="Benefícios" className="py-16 md:py-24 bg-slate-50">
                     <div className="container mx-auto px-4">
                         <div className="text-center max-w-3xl mx-auto mb-10 md:mb-16">
                             <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4 md:mb-6">O que o Flippi NÃO é:</h2>
                             <p className="text-base md:text-lg text-slate-600 leading-relaxed">
-                                Transparência total para nossos Parceiros Fundadores.
+                                Acreditamos na transparência radical. Somos parceiros, não sócios do seu lucro.
                             </p>
                         </div>
 
@@ -433,27 +432,27 @@ export default function LandingPage() {
                             {[
                                 {
                                     icon: TrendingUp,
-                                    title: "Não somos Intermediadores",
-                                    desc: "Não tocamos no seu dinheiro. O pagamento vai direto para você (Pix ou Maquininha).",
+                                    title: "Não somos Sócios",
+                                    desc: "Não cobramos comissão sobre seus pedidos. O faturamento é 100% seu.",
                                     color: "text-emerald-600",
                                     bg: "bg-white border-emerald-100"
                                 },
                                 {
                                     icon: Smartphone,
                                     title: "Não somos Marketplace",
-                                    desc: "Não colocamos você numa lista para brigar por preço. O foco é fortalecer SUA marca.",
+                                    desc: "Não colocamos você numa lista para brigar por preço com o vizinho. Fortalecemos a SUA marca.",
                                     color: "text-blue-600",
                                     bg: "bg-white border-blue-100"
                                 },
                                 {
                                     icon: ShieldCheck,
-                                    title: "Não somos Franquia de Motoboys",
-                                    desc: "Nós damos a tecnologia para você gerenciar sua frota ou seus parceiros de entrega.",
+                                    title: "Não retemos seu dinheiro",
+                                    desc: "Use seu próprio Pix ou maquininha. O dinheiro cai na sua conta na hora, sem intermediários.",
                                     color: "text-purple-600",
                                     bg: "bg-white border-purple-100"
                                 }
                             ].map((item, i) => (
-                                <Card key={i} className={`border shadow-sm rounded-2xl md:rounded-3xl overflow-hidden ${item.bg}`}>
+                                <Card key={i} className={`border shadow-sm rounded-2xl md:rounded-3xl overflow-hidden ${item.bg} hover:shadow-md transition-shadow`}>
                                     <CardContent className="p-6 md:p-8">
                                         <div className={`w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-slate-50 flex items-center justify-center mb-4 md:mb-6`}>
                                             <item.icon className={`h-6 w-6 md:h-7 md:w-7 ${item.color}`} aria-hidden="true" />
@@ -467,25 +466,31 @@ export default function LandingPage() {
                     </div>
                 </section>
 
-                {/* --- PREÇO (Oferta Fundador) --- */}
+                {/* --- OFERTA DE VALOR (GRATUIDADE) --- */}
                 <section aria-label="Preços e Planos" className="py-16 md:py-24 bg-gradient-to-b from-white to-emerald-50/50">
                     <div className="container mx-auto px-4">
                         <div className="max-w-5xl mx-auto bg-white rounded-[2rem] md:rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden flex flex-col md:flex-row">
 
                             <div className="p-8 md:p-16 md:w-3/5 flex flex-col justify-center">
-                                <h2 className="text-2xl sm:text-4xl font-bold text-slate-900 mb-4 md:mb-6">Oportunidade Única.</h2>
-                                <p className="text-slate-600 mb-6 md:mb-8 text-sm md:text-base">
-                                    Para lançar o Flippi com força total, estamos isentando os 50 primeiros parceiros de qualquer mensalidade. <strong>Para sempre.</strong>
+                                <div className="flex items-center gap-2 mb-4">
+                                    <span className="bg-emerald-100 text-emerald-800 py-1 px-3 rounded-full text-xs font-bold uppercase tracking-wider">
+                                        Missão Flippi
+                                    </span>
+                                </div>
+                                <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-4 md:mb-6">Por que é Grátis?</h2>
+                                <p className="text-slate-600 mb-6 md:mb-8 text-sm md:text-base leading-relaxed">
+                                    Sabemos como é difícil empreender no Brasil. Taxas altas, sistemas caros e complexos... decidimos mudar isso.<br /><br />
+                                    Liberamos nossa tecnologia <strong>gratuitamente</strong> para você tracionar seu negócio sem medo de boleto no fim do mês.
                                 </p>
 
-                                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mb-8">
                                     {[
-                                        "Página de Delivery Própria",
-                                        "Cardápio Digital (Mesa)",
-                                        "Smart Hub (Gestor)",
-                                        "Sistema de Coins",
+                                        "Site de Delivery Próprio",
+                                        "Cardápio Digital QR Code",
+                                        "Gestor de Pedidos (KDS)",
+                                        "Programa de Fidelidade",
                                         "Gestão de Entregadores",
-                                        "Suporte VIP"
+                                        "Suporte da Comunidade"
                                     ].map((feat, i) => (
                                         <li key={i} className="flex items-center gap-3">
                                             <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
@@ -493,24 +498,32 @@ export default function LandingPage() {
                                         </li>
                                     ))}
                                 </ul>
+
+                                <Button onClick={handleStartNow} className="w-full md:w-fit h-12 bg-slate-900 text-white rounded-xl font-bold px-8 hover:bg-slate-800">
+                                    Começar Agora
+                                </Button>
                             </div>
 
                             <div className="bg-slate-900 p-8 md:p-16 md:w-2/5 flex flex-col justify-center items-center text-center relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500 blur-[60px] rounded-full opacity-40"></div>
+                                {/* Efeito de brilho de fundo */}
+                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-emerald-500 blur-[80px] rounded-full opacity-30 animate-pulse-slow"></div>
 
-                                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 py-1 px-3 rounded-full text-xs font-bold uppercase tracking-wider mb-4">
-                                    Parceiro Fundador
-                                </span>
+                                <div className="relative z-10">
+                                    <span className="text-emerald-400 font-bold mb-2 block text-sm uppercase tracking-wide">Plano Impulso</span>
+                                    <div className="flex items-baseline justify-center gap-1 mb-4">
+                                        <span className="text-6xl md:text-7xl font-extrabold text-white tracking-tighter">R$0</span>
+                                        <span className="text-xl text-slate-400 font-medium">/mês</span>
+                                    </div>
 
-                                <div className="flex items-baseline justify-center gap-1 mb-2 relative z-10">
-                                    <span className="text-4xl md:text-5xl font-extrabold text-white">R$ 0,00</span>
+                                    <p className="text-slate-300 text-sm mb-8 px-4">
+                                        Sem pegadinhas. Sem período de teste. Acesso completo para você começar a faturar hoje.
+                                    </p>
+
+                                    <Button onClick={handleStartNow} className="w-full h-14 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-bold rounded-xl shadow-lg shadow-emerald-900/50 transition-transform hover:scale-105 text-lg">
+                                        Criar Minha Conta
+                                    </Button>
+                                    <p className="text-[11px] text-slate-500 mt-4">Não pedimos cartão de crédito.</p>
                                 </div>
-                                <span className="text-emerald-400 font-bold mb-6 md:mb-8 text-sm uppercase tracking-wide">Vitalício</span>
-
-                                <Button onClick={handleWhatsappClick} className="w-full h-12 md:h-14 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-bold rounded-xl shadow-lg shadow-emerald-900/50 transition-transform hover:scale-105 text-base md:text-lg">
-                                    Quero minha vaga
-                                </Button>
-                                <p className="text-[10px] md:text-[11px] text-slate-500 mt-4">Restrito aos 50 primeiros CNPJs.</p>
                             </div>
 
                         </div>
@@ -526,12 +539,12 @@ export default function LandingPage() {
                         </div>
 
                         <p className="text-slate-400 text-xs md:text-sm text-center">
-                            © 2026 Flippi Tecnologia. Feito com ❤️ em Santos, SP.
+                            © 2026 Flippi Tecnologia. Desenvolvido para impulsionar negócios locais.
                         </p>
 
                         <nav className="flex gap-6">
                             <a href="#" className="text-slate-500 hover:text-emerald-600 transition-colors text-sm font-medium">Instagram</a>
-                            <a href="#" onClick={handleWhatsappClick} className="text-slate-500 hover:text-emerald-600 transition-colors text-sm font-medium cursor-pointer">WhatsApp</a>
+                            <a href="#" onClick={handleWhatsappClick} className="text-slate-500 hover:text-emerald-600 transition-colors text-sm font-medium cursor-pointer">Fale Conosco</a>
                         </nav>
                     </div>
                 </footer>
