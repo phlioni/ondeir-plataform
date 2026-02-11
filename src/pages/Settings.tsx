@@ -76,6 +76,17 @@ function LocationPicker({ lat, lng, onLocationSelect, isLoaded }: any) {
     );
 }
 
+// Função auxiliar para sanitizar Slug
+const sanitizeSlug = (text: string) => {
+    return text
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+};
+
 export default function Settings() {
     const { toast } = useToast();
     const [loading, setLoading] = useState(true);
@@ -87,6 +98,8 @@ export default function Settings() {
     // Estados para Auto-Save do Slug
     const [isSavingSlug, setIsSavingSlug] = useState(false);
     const [slugSaved, setSlugSaved] = useState(false);
+    // Flag para saber se o slug foi editado manualmente pelo usuário
+    const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
     const { isLoaded } = useJsApiLoader({ id: 'google-map-s', googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_KEY || "", libraries: GOOGLE_MAPS_LIBRARIES });
 
@@ -107,12 +120,12 @@ export default function Settings() {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const appBaseUrl = isLocalhost ? 'http://localhost:8080' : 'https://flippi.app';
 
+    // Link dinâmico baseado no form.slug (para mostrar em tempo real)
     const menuLink = market ? `${window.location.origin}/menu/${market.id}` : "";
-    const deliveryLink = market
-        ? `${appBaseUrl}/place/${form.slug || market.id}`
-        : "";
+    const deliveryLink = `${appBaseUrl}/place/${form.slug || (market?.id || "")}`;
 
     // Verifica se a loja ainda tem o nome padrão ou está incompleta
+    // Essa verificação agora é reativa ao 'form', liberando a tela instantaneamente
     const isDefaultSetup = form.name === "Minha Loja Nova" || !form.name || !form.category;
 
     useEffect(() => {
@@ -165,40 +178,23 @@ export default function Settings() {
         init();
     }, []);
 
-    // --- AUTO-SAVE LOGIC FOR SLUG ---
+    // --- AUTO-UPDATE SLUG FROM NAME ---
+    // Se o usuário mudar o nome e ainda não tiver editado o slug manualmente (ou se o slug for padrão),
+    // atualiza o slug automaticamente para refletir o nome.
     useEffect(() => {
-        if (!market || loading) return;
-
-        const cleanInput = form.slug.toLowerCase().trim().replace(/\s+/g, '-');
-
-        if (cleanInput !== (market.slug || "") && cleanInput.length > 3) {
-            const timer = setTimeout(async () => {
-                setIsSavingSlug(true);
-                try {
-                    const dbSlug = cleanInput.normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-                    const { error } = await supabase.from("markets").update({ slug: dbSlug }).eq("id", market.id);
-                    if (error) {
-                        if (error.message?.includes("markets_slug_unique")) {
-                            toast({ title: "Link em uso", description: "Escolha outro nome, este já existe.", variant: "destructive" });
-                        } else {
-                            throw error;
-                        }
-                    } else {
-                        setMarket(prev => ({ ...prev, slug: dbSlug }));
-                        setForm(prev => ({ ...prev, slug: dbSlug }));
-                        setSlugSaved(true);
-                        setTimeout(() => setSlugSaved(false), 3000);
-                    }
-                } catch (error) {
-                    console.error("Erro auto-save:", error);
-                } finally {
-                    setIsSavingSlug(false);
+        if (!slugManuallyEdited && form.name && form.name !== "Minha Loja Nova") {
+            const autoSlug = sanitizeSlug(form.name);
+            // Só atualiza se o slug atual for diferente e parecer um ID (padrão) ou estiver vazio
+            // ou se o usuário estiver apenas digitando o nome pela primeira vez
+            if (form.slug !== autoSlug) {
+                // Verifica se o slug atual é um UUID (padrão do sistema)
+                const isUuidSlug = /^[0-9a-f]{8}-[0-9a-f]{4}/.test(form.slug);
+                if (isUuidSlug || !form.slug || form.slug === "minha-loja-nova") {
+                    setForm(prev => ({ ...prev, slug: autoSlug }));
                 }
-            }, 1500);
-
-            return () => clearTimeout(timer);
+            }
         }
-    }, [form.slug, market]);
+    }, [form.name]);
 
     const handleUpload = async (file: File) => {
         try {
@@ -216,24 +212,56 @@ export default function Settings() {
 
     const handleSave = async () => {
         try {
+            // Garante que o slug esteja sanitizado antes de salvar
+            const finalSlug = sanitizeSlug(form.slug);
+
             const payload = {
-                name: form.name, category: form.category, description: form.description, address: form.address,
+                name: form.name,
+                category: form.category,
+                description: form.description,
+                address: form.address,
                 amenities: form.amenities.split(",").map(s => s.trim()).filter(Boolean),
-                cover_image: form.cover_image, latitude: form.latitude, longitude: form.longitude, owner_id: user.id,
-                slug: form.slug,
+                cover_image: form.cover_image,
+                latitude: form.latitude,
+                longitude: form.longitude,
+                owner_id: user.id,
+                slug: finalSlug,
                 delivery_fee: Number(form.delivery_fee),
                 delivery_time_min: Number(form.delivery_time_min),
                 delivery_time_max: Number(form.delivery_time_max),
                 opening_hours: form.opening_hours,
-                payment_methods: form.payment_methods // Incluindo pagamentos no save
+                payment_methods: form.payment_methods
             };
 
-            if (market) await supabase.from("markets").update(payload).eq("id", market.id);
-            else await supabase.from("markets").insert(payload);
+            let result;
+            if (market) {
+                result = await supabase.from("markets").update(payload).eq("id", market.id);
+            } else {
+                result = await supabase.from("markets").insert(payload);
+            }
 
-            toast({ title: "Configurações salvas!" });
+            if (result.error) throw result.error;
+
+            // Atualiza o estado local para garantir sincronia e liberar UI
+            setMarket(prev => ({ ...prev, ...payload }));
+            // Atualiza o form também para garantir que o slug sanitizado fique visível
+            setForm(prev => ({ ...prev, slug: finalSlug }));
+
+            toast({ title: "Configurações salvas!", description: "Sua loja foi atualizada." });
+
         } catch (e: any) {
-            toast({ title: "Erro", description: e.message, variant: "destructive" });
+            console.error("Erro ao salvar:", e);
+            // TRATAMENTO ESPECÍFICO PARA DUPLICIDADE DE SLUG
+            if (e.code === "23505" || e.message?.includes("markets_slug_unique")) {
+                toast({
+                    title: "Link Indisponível",
+                    description: `O link "${form.slug}" já está sendo usado por outra loja. Tente adicionar um número ou cidade (ex: ${form.slug}-sp).`,
+                    variant: "destructive",
+                    duration: 5000
+                });
+            } else {
+                toast({ title: "Erro ao salvar", description: e.message || "Tente novamente.", variant: "destructive" });
+            }
         }
     };
 
@@ -282,6 +310,12 @@ export default function Settings() {
         window.open(url, '_blank');
     };
 
+    // Função para alterar slug manualmente
+    const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setSlugManuallyEdited(true);
+        setForm({ ...form, slug: e.target.value });
+    };
+
     if (loading) return <Loader2 className="animate-spin" />;
 
     return (
@@ -309,9 +343,9 @@ export default function Settings() {
                                 <CardHeader className="bg-gray-50/80 border-b pb-4"><CardTitle>Dados Gerais</CardTitle></CardHeader>
                                 <CardContent className="space-y-5 pt-6">
 
-                                    {/* --- AVISO DE CONFIGURAÇÃO --- */}
+                                    {/* --- AVISO DE CONFIGURAÇÃO (Desaparece automaticamente ao preencher) --- */}
                                     {isDefaultSetup && (
-                                        <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-lg animate-in slide-in-from-top-2">
+                                        <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-lg animate-in slide-in-from-top-2 transition-all">
                                             <div className="flex items-start gap-3">
                                                 <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                                                 <div className="space-y-1">
@@ -326,7 +360,7 @@ export default function Settings() {
 
                                     {market && (
                                         <div className="space-y-4">
-                                            {/* Link Menu Digital (Sempre visível, mas pode estar em modo 'padrão') */}
+                                            {/* Link Menu Digital */}
                                             <div className="space-y-2 bg-blue-50 p-4 rounded-xl border border-blue-100">
                                                 <label className="text-sm font-bold text-blue-900 flex items-center gap-2">
                                                     <QrCode className="w-4 h-4" /> Menu Digital (Uso Interno/Mesa)
@@ -338,9 +372,9 @@ export default function Settings() {
                                                 </div>
                                             </div>
 
-                                            {/* Link Delivery (Sempre visível) */}
-                                            <div className={`space-y-4 p-4 rounded-xl border relative overflow-hidden transition-all ${isDefaultSetup ? 'bg-gray-50 border-gray-200 opacity-90' : 'bg-green-50 border-green-100'}`}>
-                                                {slugSaved && <div className="absolute top-0 right-0 left-0 h-1 bg-green-500 animate-in fade-in duration-300" />}
+                                            {/* Link Delivery - LIBERAÇÃO INSTANTÂNEA */}
+                                            <div className={`space-y-4 p-4 rounded-xl border relative overflow-hidden transition-all duration-300 ${isDefaultSetup ? 'bg-gray-50 border-gray-200 opacity-90' : 'bg-green-50 border-green-100'}`}>
+                                                {/* Indicador de carregamento ou sucesso */}
 
                                                 <div>
                                                     <div className="flex justify-between items-start mb-2">
@@ -348,33 +382,38 @@ export default function Settings() {
                                                             <Store className="w-4 h-4" /> Link da Loja Delivery (Divulgação)
                                                         </label>
                                                         {isDefaultSetup && (
-                                                            <span className="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">Requer Configuração</span>
+                                                            <span className="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">Requer Nome & Categoria</span>
                                                         )}
                                                     </div>
 
                                                     <div className="flex gap-2 mb-3">
                                                         <Input value={deliveryLink} readOnly className={`bg-white text-gray-600 font-mono text-xs ${isDefaultSetup ? 'border-gray-200' : 'border-green-200'}`} />
-                                                        <Button variant="outline" className={`shrink-0 h-9 w-9 p-0 ${isDefaultSetup ? 'border-gray-200 text-gray-400' : 'border-green-200 hover:bg-green-100 text-green-700'}`} onClick={() => copyToClipboard(deliveryLink)} title="Copiar"><Copy className="w-4 h-4" /></Button>
-                                                        <Button variant="outline" className={`shrink-0 h-9 w-9 p-0 ${isDefaultSetup ? 'border-gray-200 text-gray-400' : 'border-green-200 hover:bg-green-100 text-green-700'}`} onClick={() => window.open(deliveryLink, '_blank')} title="Abrir"><ExternalLink className="w-4 h-4" /></Button>
+                                                        <Button variant="outline" className={`shrink-0 h-9 w-9 p-0 ${isDefaultSetup ? 'border-gray-200 text-gray-400' : 'border-green-200 hover:bg-green-100 text-green-700'}`} onClick={() => copyToClipboard(deliveryLink)} title="Copiar" disabled={isDefaultSetup}><Copy className="w-4 h-4" /></Button>
+                                                        <Button variant="outline" className={`shrink-0 h-9 w-9 p-0 ${isDefaultSetup ? 'border-gray-200 text-gray-400' : 'border-green-200 hover:bg-green-100 text-green-700'}`} onClick={() => window.open(deliveryLink, '_blank')} title="Abrir" disabled={isDefaultSetup}><ExternalLink className="w-4 h-4" /></Button>
                                                     </div>
 
-                                                    {!isDefaultSetup && (
+                                                    {/* Botão WhatsApp libera assim que isDefaultSetup for false */}
+                                                    <div className={`transition-all duration-300 overflow-hidden ${isDefaultSetup ? 'h-0 opacity-0' : 'h-auto opacity-100'}`}>
                                                         <Button className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold gap-2 shadow-sm border-0" onClick={shareOnWhatsApp}>
                                                             <Share2 className="w-4 h-4" /> Enviar Link no WhatsApp
                                                         </Button>
-                                                    )}
+                                                    </div>
                                                 </div>
 
                                                 <div className={`pt-3 border-t ${isDefaultSetup ? 'border-gray-200' : 'border-green-200/50'}`}>
                                                     <div className="flex justify-between items-center mb-1">
                                                         <label className={`text-xs font-semibold flex items-center gap-1 ${isDefaultSetup ? 'text-gray-500' : 'text-green-800'}`}><Globe className="w-3 h-3" /> Personalizar Link (Slug)</label>
-                                                        {isSavingSlug && <span className="text-[10px] text-green-600 flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Salvando...</span>}
-                                                        {slugSaved && <span className="text-[10px] text-green-600 flex items-center gap-1 font-bold"><Check className="w-3 h-3" /> Salvo!</span>}
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-[10px] text-gray-500 font-mono hidden sm:inline whitespace-nowrap">{appBaseUrl}/place/</span>
-                                                        <Input placeholder="ex: hamburgueria-do-ze" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className={`h-8 text-sm bg-white border-green-200 focus-visible:ring-green-500 ${slugSaved ? 'border-green-500 bg-green-50' : ''}`} />
+                                                        <Input
+                                                            placeholder="ex: hamburgueria-do-ze"
+                                                            value={form.slug}
+                                                            onChange={handleSlugChange}
+                                                            className={`h-8 text-sm bg-white border-green-200 focus-visible:ring-green-500`}
+                                                        />
                                                     </div>
+                                                    <p className="text-[10px] text-gray-400 mt-1">Este é o nome que aparece no final do seu link.</p>
                                                 </div>
                                             </div>
                                         </div>
