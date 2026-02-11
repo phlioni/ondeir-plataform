@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { GoogleMap, useJsApiLoader, Marker } from "@react-google-maps/api";
-import { Loader2, Save, Upload, Copy, ExternalLink, QrCode, Settings as SettingsIcon, Truck, DollarSign, Clock, Wallet, CalendarClock, Sparkles, Share2, Globe, Store, Check, RefreshCw, CreditCard, AlertTriangle, Info } from "lucide-react";
+import { Loader2, Save, Upload, Copy, ExternalLink, QrCode, Settings as SettingsIcon, Truck, DollarSign, Clock, Wallet, CalendarClock, Sparkles, Share2, Globe, Store, Check, RefreshCw, CreditCard } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IntegrationsTab } from "@/components/IntegrationsTab";
 import { CoinsWallet } from "@/components/CoinsWallet";
@@ -111,9 +111,6 @@ export default function Settings() {
     const deliveryLink = market
         ? `${appBaseUrl}/place/${form.slug || market.id}`
         : "";
-
-    // Verifica se a loja ainda tem o nome padrão ou está incompleta
-    const isDefaultSetup = form.name === "Minha Loja Nova" || !form.name || !form.category;
 
     useEffect(() => {
         const init = async () => {
@@ -308,25 +305,8 @@ export default function Settings() {
                             <Card className="border-0 shadow-md">
                                 <CardHeader className="bg-gray-50/80 border-b pb-4"><CardTitle>Dados Gerais</CardTitle></CardHeader>
                                 <CardContent className="space-y-5 pt-6">
-
-                                    {/* --- AVISO DE CONFIGURAÇÃO --- */}
-                                    {isDefaultSetup && (
-                                        <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-lg animate-in slide-in-from-top-2">
-                                            <div className="flex items-start gap-3">
-                                                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                                                <div className="space-y-1">
-                                                    <h4 className="text-sm font-bold text-amber-800">Atenção: Configure sua Loja</h4>
-                                                    <p className="text-sm text-amber-700 leading-relaxed">
-                                                        Preencha o <strong>Nome</strong> e a <strong>Categoria</strong> da sua loja abaixo para liberar e personalizar seus links de compartilhamento oficiais. Não esqueça de salvar as alterações!
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
                                     {market && (
                                         <div className="space-y-4">
-                                            {/* Link Menu Digital (Sempre visível, mas pode estar em modo 'padrão') */}
                                             <div className="space-y-2 bg-blue-50 p-4 rounded-xl border border-blue-100">
                                                 <label className="text-sm font-bold text-blue-900 flex items-center gap-2">
                                                     <QrCode className="w-4 h-4" /> Menu Digital (Uso Interno/Mesa)
@@ -337,37 +317,24 @@ export default function Settings() {
                                                     <Button variant="outline" className="shrink-0 border-blue-200 hover:bg-blue-100 text-blue-700 h-9 w-9 p-0" onClick={() => window.open(menuLink, '_blank')} title="Abrir"><ExternalLink className="w-4 h-4" /></Button>
                                                 </div>
                                             </div>
-
-                                            {/* Link Delivery (Sempre visível) */}
-                                            <div className={`space-y-4 p-4 rounded-xl border relative overflow-hidden transition-all ${isDefaultSetup ? 'bg-gray-50 border-gray-200 opacity-90' : 'bg-green-50 border-green-100'}`}>
+                                            <div className="space-y-4 bg-green-50 p-4 rounded-xl border border-green-100 relative overflow-hidden">
                                                 {slugSaved && <div className="absolute top-0 right-0 left-0 h-1 bg-green-500 animate-in fade-in duration-300" />}
-
                                                 <div>
-                                                    <div className="flex justify-between items-start mb-2">
-                                                        <label className={`text-sm font-bold flex items-center gap-2 ${isDefaultSetup ? 'text-gray-700' : 'text-green-900'}`}>
-                                                            <Store className="w-4 h-4" /> Link da Loja Delivery (Divulgação)
-                                                        </label>
-                                                        {isDefaultSetup && (
-                                                            <span className="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">Requer Configuração</span>
-                                                        )}
-                                                    </div>
-
+                                                    <label className="text-sm font-bold text-green-900 flex items-center gap-2 mb-2">
+                                                        <Store className="w-4 h-4" /> Link da Loja Delivery (Divulgação)
+                                                    </label>
                                                     <div className="flex gap-2 mb-3">
-                                                        <Input value={deliveryLink} readOnly className={`bg-white text-gray-600 font-mono text-xs ${isDefaultSetup ? 'border-gray-200' : 'border-green-200'}`} />
-                                                        <Button variant="outline" className={`shrink-0 h-9 w-9 p-0 ${isDefaultSetup ? 'border-gray-200 text-gray-400' : 'border-green-200 hover:bg-green-100 text-green-700'}`} onClick={() => copyToClipboard(deliveryLink)} title="Copiar"><Copy className="w-4 h-4" /></Button>
-                                                        <Button variant="outline" className={`shrink-0 h-9 w-9 p-0 ${isDefaultSetup ? 'border-gray-200 text-gray-400' : 'border-green-200 hover:bg-green-100 text-green-700'}`} onClick={() => window.open(deliveryLink, '_blank')} title="Abrir"><ExternalLink className="w-4 h-4" /></Button>
+                                                        <Input value={deliveryLink} readOnly className="bg-white text-gray-600 font-mono text-xs border-green-200" />
+                                                        <Button variant="outline" className="shrink-0 border-green-200 hover:bg-green-100 text-green-700 h-9 w-9 p-0" onClick={() => copyToClipboard(deliveryLink)} title="Copiar"><Copy className="w-4 h-4" /></Button>
+                                                        <Button variant="outline" className="shrink-0 border-green-200 hover:bg-green-100 text-green-700 h-9 w-9 p-0" onClick={() => window.open(deliveryLink, '_blank')} title="Abrir"><ExternalLink className="w-4 h-4" /></Button>
                                                     </div>
-
-                                                    {!isDefaultSetup && (
-                                                        <Button className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold gap-2 shadow-sm border-0" onClick={shareOnWhatsApp}>
-                                                            <Share2 className="w-4 h-4" /> Enviar Link no WhatsApp
-                                                        </Button>
-                                                    )}
+                                                    <Button className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold gap-2 shadow-sm border-0" onClick={shareOnWhatsApp}>
+                                                        <Share2 className="w-4 h-4" /> Enviar Link no WhatsApp
+                                                    </Button>
                                                 </div>
-
-                                                <div className={`pt-3 border-t ${isDefaultSetup ? 'border-gray-200' : 'border-green-200/50'}`}>
+                                                <div className="pt-3 border-t border-green-200/50">
                                                     <div className="flex justify-between items-center mb-1">
-                                                        <label className={`text-xs font-semibold flex items-center gap-1 ${isDefaultSetup ? 'text-gray-500' : 'text-green-800'}`}><Globe className="w-3 h-3" /> Personalizar Link (Slug)</label>
+                                                        <label className="text-xs font-semibold text-green-800 flex items-center gap-1"><Globe className="w-3 h-3" /> Personalizar Link (Slug)</label>
                                                         {isSavingSlug && <span className="text-[10px] text-green-600 flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Salvando...</span>}
                                                         {slugSaved && <span className="text-[10px] text-green-600 flex items-center gap-1 font-bold"><Check className="w-3 h-3" /> Salvo!</span>}
                                                     </div>
@@ -381,25 +348,11 @@ export default function Settings() {
                                     )}
 
                                     <div className="grid md:grid-cols-2 gap-5 mt-4">
+                                        <div className="space-y-2"><label className="text-sm font-medium">Nome</label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium flex items-center gap-1">
-                                                Nome do Estabelecimento <span className="text-red-500">*</span>
-                                            </label>
-                                            <Input
-                                                value={form.name}
-                                                onChange={e => setForm({ ...form, name: e.target.value })}
-                                                placeholder="Ex: Pizzaria do João"
-                                                className={isDefaultSetup && form.name === "Minha Loja Nova" ? "border-amber-400 bg-amber-50" : ""}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium flex items-center gap-1">
-                                                Categoria <span className="text-red-500">*</span>
-                                            </label>
+                                            <label className="text-sm font-medium">Categoria</label>
                                             <Select value={form.category} onValueChange={v => setForm({ ...form, category: v })}>
-                                                <SelectTrigger className={isDefaultSetup && !form.category ? "border-amber-400 bg-amber-50" : ""}>
-                                                    <SelectValue placeholder="Selecione..." />
-                                                </SelectTrigger>
+                                                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                                                 <SelectContent>{establishmentCategories.map((cat) => (<SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>))}</SelectContent>
                                             </Select>
                                         </div>
