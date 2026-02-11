@@ -120,12 +120,11 @@ export default function Settings() {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const appBaseUrl = isLocalhost ? 'http://localhost:8080' : 'https://flippi.app';
 
-    // Link dinâmico baseado no form.slug (para mostrar em tempo real)
-    const menuLink = market ? `${window.location.origin}/menu/${market.id}` : "";
-    const deliveryLink = `${appBaseUrl}/place/${form.slug || (market?.id || "")}`;
+    // Link dinâmico: Só gera se tivermos o ID da loja
+    const menuLink = (market && market.id) ? `${window.location.origin}/menu/${market.id}` : "";
+    const deliveryLink = (market && market.id) ? `${appBaseUrl}/place/${form.slug || market.id}` : "";
 
     // Verifica se a loja ainda tem o nome padrão ou está incompleta
-    // Essa verificação agora é reativa ao 'form', liberando a tela instantaneamente
     const isDefaultSetup = form.name === "Minha Loja Nova" || !form.name || !form.category;
 
     useEffect(() => {
@@ -179,19 +178,13 @@ export default function Settings() {
     }, []);
 
     // --- AUTO-UPDATE SLUG FROM NAME ---
-    // Se o usuário mudar o nome e ainda não tiver editado o slug manualmente (ou se o slug for padrão),
-    // atualiza o slug automaticamente para refletir o nome.
     useEffect(() => {
         if (!slugManuallyEdited && form.name && form.name !== "Minha Loja Nova") {
             const autoSlug = sanitizeSlug(form.name);
             // Só atualiza se o slug atual for diferente e parecer um ID (padrão) ou estiver vazio
-            // ou se o usuário estiver apenas digitando o nome pela primeira vez
-            if (form.slug !== autoSlug) {
-                // Verifica se o slug atual é um UUID (padrão do sistema)
-                const isUuidSlug = /^[0-9a-f]{8}-[0-9a-f]{4}/.test(form.slug);
-                if (isUuidSlug || !form.slug || form.slug === "minha-loja-nova") {
-                    setForm(prev => ({ ...prev, slug: autoSlug }));
-                }
+            const isUuidSlug = /^[0-9a-f]{8}-[0-9a-f]{4}/.test(form.slug);
+            if (isUuidSlug || !form.slug || form.slug === "minha-loja-nova") {
+                setForm(prev => ({ ...prev, slug: autoSlug }));
             }
         }
     }, [form.name]);
@@ -233,29 +226,29 @@ export default function Settings() {
                 payment_methods: form.payment_methods
             };
 
-            let result;
-            if (market) {
-                result = await supabase.from("markets").update(payload).eq("id", market.id);
+            let response;
+            if (market?.id) {
+                // UPDATE: Retorna os dados atualizados
+                response = await supabase.from("markets").update(payload).eq("id", market.id).select().single();
             } else {
-                result = await supabase.from("markets").insert(payload);
+                // INSERT: Retorna os dados criados (incluindo o ID)
+                response = await supabase.from("markets").insert(payload).select().single();
             }
 
-            if (result.error) throw result.error;
+            if (response.error) throw response.error;
 
-            // Atualiza o estado local para garantir sincronia e liberar UI
-            setMarket(prev => ({ ...prev, ...payload }));
-            // Atualiza o form também para garantir que o slug sanitizado fique visível
-            setForm(prev => ({ ...prev, slug: finalSlug }));
+            // Atualiza o estado local COMPLETO com os dados do banco (trazendo o ID e Slug oficial)
+            setMarket(response.data);
+            setForm(prev => ({ ...prev, slug: response.data.slug }));
 
             toast({ title: "Configurações salvas!", description: "Sua loja foi atualizada." });
 
         } catch (e: any) {
             console.error("Erro ao salvar:", e);
-            // TRATAMENTO ESPECÍFICO PARA DUPLICIDADE DE SLUG
             if (e.code === "23505" || e.message?.includes("markets_slug_unique")) {
                 toast({
                     title: "Link Indisponível",
-                    description: `O link "${form.slug}" já está sendo usado por outra loja. Tente adicionar um número ou cidade (ex: ${form.slug}-sp).`,
+                    description: `O link "${form.slug}" já está em uso. Tente adicionar um número ou cidade.`,
                     variant: "destructive",
                     duration: 5000
                 });
@@ -310,7 +303,6 @@ export default function Settings() {
         window.open(url, '_blank');
     };
 
-    // Função para alterar slug manualmente
     const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSlugManuallyEdited(true);
         setForm({ ...form, slug: e.target.value });
@@ -358,7 +350,8 @@ export default function Settings() {
                                         </div>
                                     )}
 
-                                    {market && (
+                                    {/* Exibe os links apenas se o market existir e tiver ID carregado */}
+                                    {market && market.id && (
                                         <div className="space-y-4">
                                             {/* Link Menu Digital */}
                                             <div className="space-y-2 bg-blue-50 p-4 rounded-xl border border-blue-100">

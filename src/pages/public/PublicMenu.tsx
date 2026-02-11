@@ -27,8 +27,14 @@ function deg2rad(deg: number) {
     return deg * (Math.PI / 180);
 }
 
+// Helper para verificar UUID
+const isUUID = (str: string) => {
+    const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return regex.test(str);
+};
+
 export default function PublicMenu() {
-    const { id: marketId } = useParams();
+    const { id: paramId } = useParams(); // Pode ser ID ou Slug
     const { toast } = useToast();
 
     // Estados de Dados
@@ -59,8 +65,8 @@ export default function PublicMenu() {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
     useEffect(() => {
-        if (marketId) loadInitialData();
-    }, [marketId]);
+        if (paramId) loadInitialData();
+    }, [paramId]);
 
     const checkLocation = (marketLat: number, marketLng: number) => {
         if (!navigator.geolocation) {
@@ -96,15 +102,33 @@ export default function PublicMenu() {
     const loadInitialData = async () => {
         setLoading(true);
         try {
-            // 1. Busca Restaurante
-            const { data: mData, error: mError } = await supabase
-                .from('markets')
-                .select('*')
-                .eq('id', marketId)
-                .single();
+            let marketQuery = supabase.from('markets').select('*');
 
-            if (mError || !mData) throw new Error("Restaurante não encontrado");
+            // 1. Resolução Híbrida: Verifica se é ID ou Slug para buscar a LOJA
+            if (isUUID(paramId || "")) {
+                marketQuery = marketQuery.eq('id', paramId);
+            } else {
+                // Se for Slug, sanitiza e busca
+                const cleanSlug = decodeURIComponent(paramId || "")
+                    .toLowerCase()
+                    .trim()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, "")
+                    .replace(/[^a-z0-9-]/g, '-')
+                    .replace(/-+/g, '-')
+                    .replace(/^-|-$/g, '');
+
+                marketQuery = marketQuery.eq('slug', cleanSlug);
+            }
+
+            const { data: mData, error: mError } = await marketQuery.maybeSingle(); // maybeSingle evita erro 406
+
+            if (mError) throw mError;
+            if (!mData) throw new Error("Restaurante não encontrado");
+
             setMarket(mData);
+
+            // IMPORTANTE: Recuperamos o ID REAL (UUID) da loja encontrada
+            const realMarketId = mData.id;
 
             // 2. Verifica Localização (Se o restaurante tiver coordenadas cadastradas)
             if (mData.latitude && mData.longitude) {
@@ -115,11 +139,12 @@ export default function PublicMenu() {
                 setIsLocationChecked(true);
             }
 
-            // 3. Busca Cardápio
+            // 3. Busca Cardápio usando o ID REAL (UUID), não o slug da URL
             const { data: menuData } = await supabase
                 .from('menu_items')
                 .select('*')
-                .eq('market_id', marketId)
+                .eq('market_id', realMarketId) // <--- CORREÇÃO AQUI
+                .eq('active', true)
                 .order('category', { ascending: true });
 
             if (menuData) {
@@ -129,17 +154,18 @@ export default function PublicMenu() {
                 setCategories(["Todos", ...uniqueCats]);
             }
 
-            // 4. Busca Mesas
+            // 4. Busca Mesas usando o ID REAL (UUID)
             const { data: tablesData } = await supabase
                 .from('restaurant_tables')
                 .select('*')
-                .eq('market_id', marketId)
+                .eq('market_id', realMarketId) // <--- CORREÇÃO AQUI
                 .order('table_number', { ascending: true });
 
             setAvailableTables(tablesData || []);
 
         } catch (error) {
-            console.error(error);
+            console.error("Erro ao carregar dados:", error);
+            // toast({ title: "Erro", description: "Não foi possível carregar o cardápio.", variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -204,7 +230,7 @@ export default function PublicMenu() {
         try {
             // 1. Criar Pedido
             const { data: order, error: orderError } = await supabase.from('orders').insert({
-                market_id: marketId,
+                market_id: market.id, // Usa o ID real do objeto market carregado
                 table_id: table.id,
                 status: 'pending',
                 payment_status: 'pending',
@@ -222,7 +248,7 @@ export default function PublicMenu() {
             // 2. Inserir Itens
             const itemsToInsert = cart.map(item => ({
                 order_id: order.id,
-                market_id: marketId,
+                market_id: market.id,
                 menu_item_id: item.id,
                 name: item.name,
                 quantity: item.quantity,
@@ -255,7 +281,8 @@ export default function PublicMenu() {
 
     const handleRedirectToDelivery = () => {
         // Redireciona para o App principal
-        window.location.href = `https://flippi.app/place/${marketId}`;
+        // Usa o slug ou id da URL atual para manter consistência
+        window.location.href = `https://flippi.app/place/${paramId}`;
     };
 
     // --- RENDERIZAÇÃO ---
