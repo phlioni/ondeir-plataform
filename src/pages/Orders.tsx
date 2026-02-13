@@ -4,14 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea"; // Importei Textarea
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"; // Adicionei Description/Footer
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Loader2, Clock, ChefHat, Bike, Receipt, Send, User, Phone, MapPin, Plus, Coins, Calculator, PackageCheck, XCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import OrderSheet from "@/components/OrderSheet";
 import { DispatchModal } from "@/components/DispatchModal";
 
-// 1. ADICIONADO: address_data e cancellation_reason no tipo
 type Order = {
     id: string;
     display_id: number;
@@ -23,7 +22,7 @@ type Order = {
     address_neighborhood?: string;
     address_complement?: string;
     address_data?: any;
-    cancellation_reason?: string; // Novo campo
+    cancellation_reason?: string;
     total_amount: number;
     subtotal?: number;
     delivery_fee?: number;
@@ -51,18 +50,56 @@ export default function Orders() {
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [sheetOrderId, setSheetOrderId] = useState<string | undefined>(undefined);
 
-    // --- NOVO: Estados para o Modal de Cancelamento ---
+    // Estados para o Modal de Cancelamento
     const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
     const [orderToCancel, setOrderToCancel] = useState<string | null>(null);
     const [cancelReason, setCancelReason] = useState("");
     const [canceling, setCanceling] = useState(false);
 
     useEffect(() => {
+        // Carrega dados iniciais
         fetchData();
-        const channel = supabase.channel('orders_realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchData())
-            .subscribe();
-        return () => { supabase.removeChannel(channel); };
+
+        // Configura o Realtime com filtro específico por Market ID
+        // Isso garante que o evento 'INSERT' seja recebido corretamente
+        const setupRealtime = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const { data: market } = await supabase.from('markets')
+                .select('id')
+                .eq('owner_id', user.id)
+                .single();
+
+            if (!market) return;
+
+            const channel = supabase.channel('orders_realtime')
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*',
+                        schema: 'public',
+                        table: 'orders',
+                        filter: `market_id=eq.${market.id}` // Filtro essencial para funcionar com RLS
+                    },
+                    () => {
+                        // Quando houver mudança, recarrega os dados
+                        fetchData();
+                    }
+                )
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
+        };
+
+        let cleanup: (() => void) | undefined;
+        setupRealtime().then(fn => { cleanup = fn; });
+
+        return () => {
+            if (cleanup) cleanup();
+        };
     }, []);
 
     const fetchData = async () => {
@@ -89,9 +126,8 @@ export default function Orders() {
         else { toast({ title: "Atualizado!" }); fetchData(); }
     };
 
-    // --- NOVA LÓGICA DE CANCELAMENTO ---
     const openCancelDialog = (e: React.MouseEvent, id: string) => {
-        e.stopPropagation(); // Evita abrir o Sheet ao clicar no botão
+        e.stopPropagation();
         setOrderToCancel(id);
         setCancelReason("");
         setIsCancelDialogOpen(true);
@@ -106,7 +142,6 @@ export default function Orders() {
 
         setCanceling(true);
         try {
-            // Atualiza status E motivo. A trigger do banco cuidará do estorno e mesa.
             const { error } = await supabase.from('orders')
                 .update({
                     status: 'canceled',
@@ -174,7 +209,6 @@ export default function Orders() {
 
         const calculatedTotal = (subtotal + delivery) - discount;
 
-        // Lógica de Endereço
         let fullAddress = "Endereço não informado";
         if (order.order_type === 'delivery') {
             if (order.address_street) {
@@ -304,12 +338,8 @@ export default function Orders() {
                 </div>
             </div>
 
-            {/* MODAL DE DESPACHO */}
-            {dispatchOrder && (
-                <DispatchModal isOpen={!!dispatchOrder} order={dispatchOrder} onClose={() => setDispatchOrder(null)} onSuccess={() => { setDispatchOrder(null); fetchData(); }} />
-            )}
+            <DispatchModal isOpen={!!dispatchOrder} order={dispatchOrder} onClose={() => setDispatchOrder(null)} onSuccess={() => { setDispatchOrder(null); fetchData(); }} />
 
-            {/* MODAL DE CANCELAMENTO (NOVO) */}
             <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
